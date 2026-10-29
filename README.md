@@ -17,14 +17,65 @@ It is a real kernel, not a shell that prints canned output:
 - **Stock hardware.** It runs on a stock C64 with a 1541, and the same disk boots with or without an REU.
 - **BASIC and an assembler.** Both run *on* the C64: `basic` is an integer BASIC, and `as` is a 6502 assembler that produces new Breadbin commands.
 
-## Try it
+## Building
+
+### What you need
+
+| Tool | Used for | Tested with |
+|------|----------|-------------|
+| [cc65](https://cc65.github.io/) (`ca65`, `ld65`, `ar65`) | assembling and linking the kernel and programs | 2.19 |
+| Python 3 (standard library only) | the disk image builder and relocation tool | 3.15 (3.8 or newer should work) |
+| GNU make | the build | 3.81 |
+| [VICE](https://vice-emu.sourceforge.io/) (`x64sc`, `c1541`) | running it and the automated tests | 3.10 |
+
+VICE is only needed to run Breadbin and its tests. Building the disk image needs just cc65, Python and make.
+
+Install them:
 
 ```sh
-make            # needs cc65 (ca65/ld65/ar65), python3
-make run        # boots build/breadbin.d64 in VICE (x64sc)
-make run-reu    # same, with a 512K REU (/tmp becomes a RAM disk)
+# macOS (Homebrew)
+brew install cc65 vice python3
+
+# Debian / Ubuntu
+sudo apt install cc65 vice python3 make
+#   (Debian's VICE package ships without the C64 ROMs; see the VICE docs
+#    for where to put them)
+
+# Windows: use WSL with the Debian/Ubuntu commands above, or install the
+# cc65 and VICE Windows builds and run make from MSYS2.
+```
+
+### Build
+
+```sh
+git clone https://github.com/kpatr1981/breadbin.git
+cd breadbin
+make
+```
+
+This assembles the kernel and every program in `src/bin/`, and packs them with the files from `rootfs/` into one disk image:
+
+| Output | What it is |
+|--------|------------|
+| `build/breadbin.d64` | the bootable disk: put this in drive 8 |
+| `build/breadbin.prg` | the kernel alone (the disk's boot file) |
+| `build/root/bin/*` | the programs, as relocatable CX executables |
+
+`make clean` removes `build/`. To add a program, drop a new `src/bin/name.s` in and run `make`: it is built automatically and lands in `/bin`.
+
+### Run
+
+```sh
+make run        # boots build/breadbin.d64 in VICE
+make run-reu    # same, with a 512 KB REU (/tmp becomes a RAM disk)
 x64sc -drive9type 1541 -9 other.d64 -autostart build/breadbin.d64   # with a drive 9
 ```
+
+Or attach `build/breadbin.d64` to drive 8 yourself and type `LOAD"*",8,1` and then `RUN`.
+
+**Real hardware.** Breadbin has only been tested in VICE so far. It needs a drive that understands the 1541's sector commands (`U1`, `U2`, `B-P`): a real 1541 or 1571, or a 1541 emulation such as the Ultimate 64's. To make a real floppy, write the `.d64` with a tool such as OpenCBM's `d64copy`.
+
+## Try it
 
 Things to type at the `/ $` prompt:
 
@@ -77,9 +128,11 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`.
 ## Tests
 
 ```sh
-make test-host   # image builder and relocation tool (fast)
-make test        # boots VICE and drives the shell (slow, ~20 min)
+make test-host   # image builder and relocation tool (fast, no VICE needed)
+make test        # boots VICE and drives the shell (slow, ~25 min)
 ```
+
+The system tests start `x64sc` (windows open minimized), type commands through VICE's remote monitor, and read the screen back. They need `x64sc` and `c1541` on your `PATH` (or set `X64SC=/path/to/x64sc`). Don't run other VICE instances at the same time: the tests are timing-sensitive under heavy CPU load.
 
 Extract a file from a disk image on the host:
 
