@@ -144,6 +144,52 @@ class Boot(unittest.TestCase):
         self.assertIn("too long", self.run_("echo x > /home/abcdefghijklmnop").replace("\n", ""))
         self.assertIn("not a directory", self.run_("ls /etc/motd/x"))
 
+    def test_17_basic_script(self):
+        out = self.run_("basic /home/hello.bas")
+        self.assertIn("5 squared is 25", out)
+        self.assertIn("fib: 0 1 1 2 3 5 8 13 21 34", out)
+
+    def test_18_basic_pipe(self):
+        self.assertEqual(self.run_("echo 'print 6*7' | basic"), "42")
+        self.assertIn("division by zero", self.run_("echo 'print 1/0' | basic"))
+
+
+class Persistence(unittest.TestCase):
+    """Files written by c64os survive a reboot and are readable on the host."""
+
+    def test_write_reboot_read(self):
+        img = os.path.join(ROOT, "build", "persist.d64")
+        with open(IMAGE, "rb") as f, open(img, "wb") as g:
+            g.write(f.read())
+        with Vice(img) as v:
+            v.wait_for("/ $", timeout=90)
+            v.run("mkdir /home/keep")
+            v.run("echo persistent data > /home/keep/f")
+        out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "mkimage.py"),
+                              "cat", img, "/home/keep/f"], capture_output=True, text=True)
+        self.assertEqual(out.stdout, "persistent data\n")
+        with Vice(img) as v:
+            v.wait_for("/ $", timeout=90)
+            self.assertEqual(v.run("cat /home/keep/f"), "persistent data")
+
+
+class REU(unittest.TestCase):
+    """With an REU: /tmp is a RAM disk."""
+
+    def test_tmp_ramdisk(self):
+        with Vice(IMAGE, reu=True) as v:
+            v.wait_for("/ $", timeout=90)
+            self.assertIn("reu: 8 x 64k", v.screen())
+            self.assertIn("/tmp", v.run("df"))
+            v.run("echo hi > /tmp/x")
+            self.assertEqual(v.run("cat /tmp/x"), "hi")
+            v.run("mkdir /tmp/d")
+            v.run("cd /tmp/d")
+            v.run("cd ../..")
+            self.assertEqual(v.run("pwd"), "/")
+            self.assertIn("home", v.run("ls /tmp/..").split())
+            self.assertIn("exists", v.run("mkdir /tmp/d"))
+
 
 if __name__ == "__main__":
     unittest.main()

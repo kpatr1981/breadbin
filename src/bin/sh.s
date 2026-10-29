@@ -55,6 +55,7 @@ outf_hi: .res 1
 outapp:  .res 1
 cwd:     .res 64
 tmpb:    .res 1
+qch:     .res 1
 bk_sig:  .res 1
 bk_i:    .res 1
 bk_p:    .res 2
@@ -263,15 +264,18 @@ tokenize:
         beq @we
         cmp #'"'
         beq @quote
+        cmp #$27            ; single quote
+        beq @quote
         sta tbuf,x
         inx
         iny
         jmp @wc
-@quote: iny
+@quote: sta qch
+        iny
 @ql:    lda line,y
         beq @we
         iny
-        cmp #'"'
+        cmp qch
         beq @wc
         sta tbuf,x
         inx
