@@ -1,0 +1,5 @@
+.superpowers/
+build/
+*.pyc
+__pycache__/
+.remember/
