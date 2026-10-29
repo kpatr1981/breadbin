@@ -7,7 +7,7 @@
 ; The screen is driven through the console: raw key mode (conmode) and
 ; the ESC = / ESC K / ESC R escapes. Rows 0-23 show text (39 columns),
 ; row 24 is the status line.
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, print
 
 TEXTMAX = 12288

@@ -1,4 +1,4 @@
-"""End-to-end tests: boot c64os in VICE and drive the shell."""
+"""End-to-end tests: boot Breadbin in VICE and drive the shell."""
 import os
 import subprocess
 import sys
@@ -8,7 +8,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 from vicetest import Vice  # noqa: E402
 
-IMAGE = os.path.join(ROOT, "build", "c64os.d64")
+IMAGE = os.path.join(ROOT, "build", "breadbin.d64")
 
 
 class Boot(unittest.TestCase):
@@ -31,7 +31,8 @@ class Boot(unittest.TestCase):
 
     def test_01_banner(self):
         s = self.v.screen()
-        self.assertIn("c64os", s)
+        self.assertIn("breadbin 0.2", s)
+        self.assertIn("kpatronas@gmail.com", s)
 
     def test_02_echo(self):
         self.assertEqual(self.run_("echo hello world"), "hello world")
@@ -43,7 +44,7 @@ class Boot(unittest.TestCase):
 
     def test_04_cat(self):
         out = self.run_("cat /etc/motd")
-        self.assertIn("welcome to c64os.", out)
+        self.assertIn("welcome to breadbin.", out)
 
     def test_05_pipe_three_stages(self):
         out = self.run_("cat /home/readme | grep unix | wc")
@@ -182,7 +183,7 @@ class Boot(unittest.TestCase):
         self.assertTrue(self.run_("uptime").startswith("up "))
         self.run_("date 13:45:10")
         self.assertTrue(self.run_("date").startswith("13:4"))
-        self.assertEqual(self.run_("version"), "c64os 0.2")
+        self.assertEqual(self.run_("version"), "breadbin 0.2 by kpatronas@gmail.com")
         self.assertIn("size: 53", self.run_("stat /etc/motd"))
         self.assertIn("0000: 77 65 6c 63", self.run_("hexdump /etc/motd | head -1"))
         self.assertIn("themes:", self.run_("theme nosuch"))
@@ -238,7 +239,7 @@ class Boot(unittest.TestCase):
 
 
 class Persistence(unittest.TestCase):
-    """Files written by c64os survive a reboot and are readable on the host."""
+    """Files written by Breadbin survive a reboot and are readable on the host."""
 
     def test_write_reboot_read(self):
         img = os.path.join(ROOT, "build", "persist.d64")
@@ -280,7 +281,7 @@ def c1541_dir(img):
 
 
 class Drives(unittest.TestCase):
-    """mount: normal C64 disks and c64os disks on drive 9."""
+    """mount: normal C64 disks and Breadbin disks on drive 9."""
 
     def test_cbm_disk(self):
         cbm = os.path.join(ROOT, "build", "t_cbm9.d64")
@@ -295,7 +296,7 @@ class Drives(unittest.TestCase):
             self.assertEqual(v.run("mount 9 /mnt"), "")
             self.assertIn("drive 9 on /mnt (cbm dos)", v.run("mount"))
             self.assertEqual(v.run("ls /mnt").split(), ["motd", "readme"])
-            self.assertIn("welcome to c64os.", v.run("cat /mnt/motd"))
+            self.assertIn("welcome to breadbin.", v.run("cat /mnt/motd"))
             v.run("cp /etc/help /mnt/help")
             v.run("rm /mnt/motd")
             v.run("mv /mnt/help /mnt/h2")
@@ -311,7 +312,7 @@ class Drives(unittest.TestCase):
         with open(out, "rb") as f, open(os.path.join(ROOT, "rootfs", "etc", "help"), "rb") as g:
             self.assertEqual(f.read(), g.read())
 
-    def test_c64os_disk(self):
+    def test_breadbin_disk(self):
         img9 = os.path.join(ROOT, "build", "t_c64fs9.d64")
         with open(IMAGE, "rb") as f, open(img9, "wb") as g:
             g.write(f.read())

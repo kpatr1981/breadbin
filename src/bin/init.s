@@ -1,5 +1,5 @@
 ; init: first process. Shows /etc/motd, runs the shell, reaps orphans.
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, eprint, perr, write_buf
 
 .segment "CODE"

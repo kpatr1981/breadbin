@@ -1,5 +1,5 @@
 ; passwd [user]: change a password (root may change anyone's)
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, eprint, newline, putc, argn, perr, fprint, fputc, print_dec
 .import pw_open, pw_next, pw_hash, pw_name, pw_hashs, pw_uid, pw_home, pw_find_uid
 .importzp lp1

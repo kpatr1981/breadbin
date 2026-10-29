@@ -1,5 +1,5 @@
 ; uname: system name
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, argn
 .importzp lp1
 .segment "CODE"
@@ -19,5 +19,5 @@
         ldx #>sys
         jmp print
 .segment "RODATA"
-sys: .byte "c64os", 10, 0
-all: .byte "c64os c64 0.1 6510 commodore-64", 10, 0
+sys: .byte "breadbin", 10, 0
+all: .byte "breadbin c64 0.2 6510 commodore-64", 10, 0

@@ -1,5 +1,5 @@
 ; whoami: print the user name for the current uid (from /etc/passwd)
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, newline, print_dec, pw_find_uid, pw_name
 .segment "CODE"
         jsr SYS_GETUID

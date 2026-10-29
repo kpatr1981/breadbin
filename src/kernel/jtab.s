@@ -1,4 +1,4 @@
-; c64os syscall entry: fixed jump table at $CF00 and dispatcher
+; Breadbin syscall entry: fixed jump table at $CF00 and dispatcher
 ;
 ; Programs `jsr SYS_x`; the table entry jumps to a stub that records the
 ; syscall number, then `dispatch` marks the kernel busy and calls the

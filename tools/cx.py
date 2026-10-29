@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make a page-relocatable c64os executable (CX format).
+"""Make a page-relocatable Breadbin executable (CX format).
 
 The program is linked twice, at origin $0000 and $0100. Bytes that differ
 by exactly one are high bytes of absolute addresses; their offsets form the

@@ -1,4 +1,4 @@
-; basic: a small integer BASIC for c64os
+; basic: a small integer BASIC for Breadbin
 ;
 ;   basic            interactive (lines with numbers are stored)
 ;   basic file.bas   load and run a program, then exit
@@ -8,7 +8,7 @@
 ; signed integers. Operators: + - * / % = <> < > <= >= and parentheses.
 ; Functions: rnd(n) abs(n). I/O goes through stdin/stdout, so basic
 ; works in pipes: `cat prog.bas | basic`.
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import getc, set_input, argn, print, eprint, putc, newline, print_dec
 .import open_or_die, perr
 
@@ -1613,7 +1613,7 @@ s_to:    .byte "to", 0
 s_step:  .byte "step", 0
 s_rnd:   .byte "rnd", 0
 s_abs:   .byte "abs", 0
-s_banner: .byte "c64os basic 0.1", 10, 0
+s_banner: .byte "breadbin basic 0.1", 10, 0
 s_prompt: .byte "> ", 0
 zero:    .byte 0
 e_q:     .byte "?", 0

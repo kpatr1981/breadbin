@@ -1,6 +1,6 @@
 ; mount [drive dir]: list mounts, or mount drive 9-11 on a directory
-;   mount 9 /mnt     a c64os disk (with directories) or a normal C64 disk
-.include "../../include/c64os.inc"
+;   mount 9 /mnt     a Breadbin disk (with directories) or a normal C64 disk
+.include "../../include/breadbin.inc"
 .import argn, parse_dec, perr, print, eprint, putc, newline, print_dec
 idx = $23
 .segment "CODE"

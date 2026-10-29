@@ -1,6 +1,8 @@
-# c64os
+# Breadbin
 
-A small Unix-like operating system for the Commodore 64.
+A small Unix-like operating system for the Commodore 64 — the "breadbin".
+
+By kpatronas@gmail.com.
 
 It is a real kernel, not a shell that prints canned output:
 
@@ -10,18 +12,18 @@ It is a real kernel, not a shell that prints canned output:
 - **A Unix filesystem on the 1541.** c64fs has inodes, real directories (`mkdir`, `cd`, `..`), files up to 35 KB, and `/dev/console` and `/dev/null` device nodes.
 - **Signals.** RUN/STOP sends `SIGINT` to the foreground job. `kill` sends any signal.
 - **REU support.** If a RAM Expansion Unit is present, it is detected at boot, formatted, and mounted at `/tmp` as a fast RAM disk.
-- **More drives.** `mount 9 /mnt` attaches drive 9, 10 or 11. A c64os disk shows up with its directories. A normal C64 disk shows up as one flat directory that you can read, write (`cp`), `rm` and `mv`; the writes go through the drive's own DOS, so other C64 software can read the results.
+- **More drives.** `mount 9 /mnt` attaches drive 9, 10 or 11. A Breadbin disk shows up with its directories. A normal C64 disk shows up as one flat directory that you can read, write (`cp`), `rm` and `mv`; the writes go through the drive's own DOS, so other C64 software can read the results.
 - **Users and screen.** There's a `login` with passwords (`passwd`, `whoami`), a full-screen editor (`edit`), colour `theme`s, shell wildcards (`*.bas`) and `jobs`.
 - **Stock hardware.** It runs on a stock C64 with a 1541, and the same disk boots with or without an REU.
-- **BASIC and an assembler.** Both run *on* the C64: `basic` is an integer BASIC, and `as` is a 6502 assembler that produces new c64os commands.
+- **BASIC and an assembler.** Both run *on* the C64: `basic` is an integer BASIC, and `as` is a 6502 assembler that produces new Breadbin commands.
 
 ## Try it
 
 ```sh
 make            # needs cc65 (ca65/ld65/ar65), python3
-make run        # boots build/c64os.d64 in VICE (x64sc)
+make run        # boots build/breadbin.d64 in VICE (x64sc)
 make run-reu    # same, with a 512K REU (/tmp becomes a RAM disk)
-x64sc -drive9type 1541 -9 other.d64 -autostart build/c64os.d64   # with a drive 9
+x64sc -drive9type 1541 -9 other.d64 -autostart build/breadbin.d64   # with a drive 9
 ```
 
 Things to type at the `/ $` prompt:
@@ -58,7 +60,7 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`.
 | `src/kernel/` | the kernel (ca65): `proc.s` scheduler, IRQ, signals · `jtab.s` syscall table at `$CF00` · `exec.s` loader · `file.s` fds, pipes, file syscalls · `fs.s` c64fs · `blk.s` 1541/REU block cache · `con.s` console · `mem.s` page allocator |
 | `src/bin/` | user programs |
 | `src/lib/` | the user library linked into programs |
-| `include/c64os.inc` | the system-call interface for programs |
+| `include/breadbin.inc` | the system-call interface for programs |
 | `tools/mkimage.py` | builds and inspects disk images (`ls`, `cat` subcommands) |
 | `tools/cx.py` | makes relocatable executables |
 | `tools/vicetest.py` | drives VICE for the automated tests |
@@ -70,7 +72,7 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`.
 - **Context switch.** Each process has its own zero page `$02–$3F` and its slice of the stack page; both are saved and restored on every switch.
 - **Kernel preemption.** The kernel itself is not preemptible, so disk I/O is a critical section. The KERNAL's IEC routines are not re-entrant.
 - **Executables (CX format).** Each program is linked twice, at `$0000` and at `$0100`. The bytes that differ by one are high bytes of addresses, and their offsets become the relocation table. The loader adds the load page to each of them.
-- **Disk.** The `.d64` is a hybrid. Its CBM DOS directory holds only the boot file `C64OS` (`LOAD"*",8,1` / `RUN`). The rest of the disk is c64fs, starting with its superblock at track 19 sector 0. The kernel reads and writes raw sectors with the drive's `U1`/`U2`/`B-P` commands.
+- **Disk.** The `.d64` is a hybrid. Its CBM DOS directory holds only the boot file `BREADBIN` (`LOAD"*",8,1` / `RUN`). The rest of the disk is c64fs (Breadbin's filesystem), starting with its superblock at track 19 sector 0. The kernel reads and writes raw sectors with the drive's `U1`/`U2`/`B-P` commands.
 
 ## Tests
 
@@ -82,6 +84,6 @@ make test        # boots VICE and drives the shell (slow, ~20 min)
 Extract a file from a disk image on the host:
 
 ```sh
-python3 tools/mkimage.py ls  build/c64os.d64 /home
-python3 tools/mkimage.py cat build/c64os.d64 /home/readme
+python3 tools/mkimage.py ls  build/breadbin.d64 /home
+python3 tools/mkimage.py cat build/breadbin.d64 /home/readme
 ```

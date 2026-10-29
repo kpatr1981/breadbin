@@ -1,4 +1,4 @@
-; c64os program loader: spawn()
+; Breadbin program loader: spawn()
 ;
 ; Loads a CX executable into freshly allocated pages, applies its
 ; relocations, copies argv into the child's memory and makes it ready.

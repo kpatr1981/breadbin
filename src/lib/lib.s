@@ -1,5 +1,5 @@
-; c64os user library: strings, numbers, output, errors
-.include "../../include/c64os.inc"
+; Breadbin user library: strings, numbers, output, errors
+.include "../../include/breadbin.inc"
 
 lp1  = $30
 lp2  = $32

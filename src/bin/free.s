@@ -1,5 +1,5 @@
 ; free: memory usage
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, print_dec_w, newline
 .segment "CODE"
         lda #<buf

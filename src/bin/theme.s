@@ -1,5 +1,5 @@
 ; theme [name]: set screen colours (saved in /etc/theme, applied at boot)
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, eprint, argn
 .importzp lp1, lp2
 fd = $23

@@ -1,5 +1,5 @@
 ; count: print an increasing number every second, forever
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print_dec, newline
 n = $23
 .segment "CODE"

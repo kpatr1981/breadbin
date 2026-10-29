@@ -1,5 +1,5 @@
 ; hexdump [file]: show bytes in hex and ascii, 8 per line
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, open_or_die, getc, set_input, putc, newline, print_hex
 off = $23               ; 2
 n   = $25

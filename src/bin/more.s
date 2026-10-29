@@ -1,5 +1,5 @@
 ; more [file]: page through text, RETURN for the next page, q to quit
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, open_or_die, getc, set_input, putc, print
 PAGE = 22
 n   = $23

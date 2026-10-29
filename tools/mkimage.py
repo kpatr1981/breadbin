@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build and inspect c64os hybrid disk images.
+"""Build and inspect Breadbin hybrid disk images.
 
-A c64os disk is a normal 35-track .d64 whose CBM DOS directory holds a
+A Breadbin disk is a normal 35-track .d64 whose CBM DOS directory holds a
 single boot file (the kernel), and whose remaining blocks hold a c64fs
 filesystem. Every block is marked allocated in the CBM BAM so the drive's
 own DOS never writes over c64fs.
@@ -83,7 +83,7 @@ class Image:
         self.data[b * 256:(b + 1) * 256] = buf
 
     # ---- CBM side ----
-    def write_cbm(self, boot_name, boot_data, disk_name=b"C64OS", disk_id=b"OS"):
+    def write_cbm(self, boot_name, boot_data, disk_name=b"BREADBIN", disk_id=b"BB"):
         used = set(range(TRACK_START[18], TRACK_START[19]))
         # boot file: sequential sectors from track 1
         chunks = [boot_data[i:i + 254] for i in range(0, len(boot_data), 254)] or [b""]
@@ -354,7 +354,7 @@ def build(out, boot, root, devs):
     img = Image()
     with open(boot, "rb") as f:
         boot_data = f.read()
-    reserved = img.write_cbm(b"C64OS", boot_data)
+    reserved = img.write_cbm(b"BREADBIN", boot_data)
     fs = FS(img)
     fs.format(reserved)
     fs.add_tree(root, ROOT_INO)

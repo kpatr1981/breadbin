@@ -1,5 +1,5 @@
 ; sleep seconds
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, parse_dec, eprint
 n = $23
 .segment "CODE"

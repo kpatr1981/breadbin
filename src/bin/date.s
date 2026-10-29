@@ -1,5 +1,5 @@
 ; date [hh:mm[:ss]]: show or set the time of day (CIA 1 TOD clock)
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, putc, newline, argn
 .importzp lp1
 TOD_10 = $dc08

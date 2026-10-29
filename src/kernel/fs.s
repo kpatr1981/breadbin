@@ -1,4 +1,4 @@
-; c64os filesystem (c64fs): inodes, block maps, directories, path lookup
+; Breadbin filesystem (c64fs): inodes, block maps, directories, path lookup
 ;
 ; All routines here run inside the (non-preemptible) kernel and never
 ; block, so they use non-swapped globals. Buffers returned by bread are

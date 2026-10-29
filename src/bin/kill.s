@@ -1,5 +1,5 @@
 ; kill [-signal] pid...
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, parse_dec, perr, eprint
 .importzp lp1
 idx = $23

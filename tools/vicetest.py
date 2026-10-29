@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drive VICE (x64sc) through its remote monitor for automated tests.
 
-    with Vice("build/c64os.d64") as v:
+    with Vice("build/breadbin.d64") as v:
         v.wait_for("/ $ ")
         v.type("ls\\n")
         print(v.screen())
@@ -208,6 +208,6 @@ class Vice:
 
 if __name__ == "__main__":
     import sys
-    with Vice(sys.argv[1] if len(sys.argv) > 1 else "build/c64os.d64") as v:
+    with Vice(sys.argv[1] if len(sys.argv) > 1 else "build/breadbin.d64") as v:
         time.sleep(float(sys.argv[2]) if len(sys.argv) > 2 else 15)
         print(v.screen())

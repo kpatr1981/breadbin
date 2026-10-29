@@ -1,5 +1,5 @@
 ; cp: copy a file (into a directory if the target is one)
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, perr, eprint, open_or_die, target, path
 in  = $23
 out = $24

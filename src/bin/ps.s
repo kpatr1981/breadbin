@@ -1,5 +1,5 @@
 ; ps: list processes
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, putc, newline, print_dec_w
 slot = $23
 .segment "CODE"

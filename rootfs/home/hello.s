@@ -1,4 +1,4 @@
-; hello.s - a c64os program you can assemble on the c64:
+; hello.s - a breadbin program you can assemble on the c64:
 ;   as hello.s hello
 ;   ./hello
 start:  ldx #0

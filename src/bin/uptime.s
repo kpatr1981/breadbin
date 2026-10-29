@@ -1,5 +1,5 @@
 ; uptime: time since boot and number of processes
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, print_dec, putc, newline, print_dec_w
 .segment "CODE"
         jsr SYS_TIME            ; A/X/Y = jiffies (60 per second)

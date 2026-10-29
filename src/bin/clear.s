@@ -1,5 +1,5 @@
 ; clear: clear the screen
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import putc
 .segment "CODE"
         lda #12

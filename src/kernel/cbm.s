@@ -1,4 +1,4 @@
-; c64os: normal Commodore DOS disks on drives 9-11, and mount()
+; Breadbin: normal Commodore DOS disks on drives 9-11, and mount()
 ;
 ; A CBM disk mounted with mount() shows up as one flat directory.
 ; Reading uses raw sectors through the block cache: the directory chain
@@ -740,7 +740,7 @@ sys_mount:
         bcs @r
         lda mo_dev
         jsr binval
-        ; a c64os disk?
+        ; a Breadbin disk?
         lda mo_dev
         ldx #<376
         ldy #>376

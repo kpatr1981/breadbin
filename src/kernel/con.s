@@ -1,4 +1,4 @@
-; c64os console: screen output and cooked keyboard input
+; Breadbin console: screen output and cooked keyboard input
 ;
 ; Internally everything is ASCII. Output is translated to PETSCII for the
 ; KERNAL screen editor (lowercase charset); keys are translated back.

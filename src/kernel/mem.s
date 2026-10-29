@@ -1,4 +1,4 @@
-; c64os memory: 256-byte page allocator for the user pool
+; Breadbin memory: 256-byte page allocator for the user pool
 .include "k.inc"
 
 POOL_FIRST = $08

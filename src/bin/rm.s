@@ -1,5 +1,5 @@
 ; rm: SYS_UNLINK on each argument
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, perr, eprint
 idx = $23
 st  = $24

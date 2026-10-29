@@ -1,4 +1,4 @@
-; c64os system interface for programs (ca65)
+; Breadbin system interface for programs (ca65)
 ;
 ; Call a syscall with `jsr SYS_name`. Arguments in A, X, Y and r0..r2.
 ; Return: carry clear = ok; carry set = error, A = errno.

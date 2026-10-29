@@ -1,6 +1,6 @@
 ; target: A/X = destination argument -> `path`; if it names a directory,
 ; path = dest + "/" + basename(argv[1])
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, basename
 .importzp lp1, lp2
 .export target, path

@@ -1,4 +1,4 @@
-; c64os files: open-file table, descriptors, pipes, file syscalls
+; Breadbin files: open-file table, descriptors, pipes, file syscalls
 .include "k.inc"
 
 .importzp fb, pp

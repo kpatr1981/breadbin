@@ -1,4 +1,4 @@
-; c64os block devices and buffer cache
+; Breadbin block devices and buffer cache
 ;
 ; dev 0: 1541 on IEC device 8, raw 256-byte sectors via "U1"/"U2"/"B-P"
 ; dev 1: REU RAM disk (block b = REU bank b>>8, page b&$ff)

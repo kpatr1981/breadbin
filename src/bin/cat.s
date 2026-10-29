@@ -1,5 +1,5 @@
 ; cat: concatenate files (or stdin) to stdout
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, open_or_die, perr
 fd = $23
 idx = $24

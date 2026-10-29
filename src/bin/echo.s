@@ -1,5 +1,5 @@
 ; echo: print arguments
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, putc, newline, argn
 .segment "CODE"
         lda #1

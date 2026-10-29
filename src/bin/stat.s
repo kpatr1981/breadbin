@@ -1,5 +1,5 @@
 ; stat file...: show inode information
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, perr, print, print_dec, newline
 idx = $23
 cur = $24

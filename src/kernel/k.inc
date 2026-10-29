@@ -1,5 +1,5 @@
-; c64os kernel internal definitions
-.include "../../include/c64os.inc"
+; Breadbin kernel internal definitions
+.include "../../include/breadbin.inc"
 
 KSTART  = $8800     ; must match KRAM in kernel.cfg
 MAXPROC = 12

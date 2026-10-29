@@ -1,5 +1,5 @@
 ; grep [-v] [-c] pattern [file]: print lines containing pattern
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, open_or_die, getc, set_input, eprint, print_dec, newline
 .importzp lp1
 pat  = $23              ; 2: pattern pointer

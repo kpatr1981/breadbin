@@ -1,4 +1,4 @@
-; as: a two-pass 6502 assembler that runs on c64os
+; as: a two-pass 6502 assembler that runs on Breadbin
 ;
 ;   as prog.s prog        assemble prog.s into the executable `prog`
 ;
@@ -11,7 +11,7 @@
 ; System names are predefined: sys_exit .. sys_isatty, r0 r1 r2,
 ; argv argc, o_rdonly o_wronly o_rdwr o_creat o_trunc o_append.
 ; Output is a relocatable CX file: run it like any other command.
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import getc, set_input, argn, print, eprint, print_dec, newline, perr
 .import open_or_die, fputc
 

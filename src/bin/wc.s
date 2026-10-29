@@ -1,5 +1,5 @@
 ; wc [file...]: count lines, words, bytes
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, open_or_die, getc, set_input, print_dec_w, print, newline, putc
 lines = $23
 words = $25

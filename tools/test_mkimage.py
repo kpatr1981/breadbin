@@ -39,8 +39,8 @@ class TestImage(unittest.TestCase):
         self.assertEqual(os.path.getsize(self.out), 174848)
 
     def test_cbm_directory_has_boot_file(self):
-        self.assertEqual(self.img.cbm_files(), [(b"C64OS", 0x82)])
-        self.assertEqual(self.img.cbm_read(b"C64OS"), self.boot)
+        self.assertEqual(self.img.cbm_files(), [(b"BREADBIN", 0x82)])
+        self.assertEqual(self.img.cbm_read(b"BREADBIN"), self.boot)
 
     def test_cbm_bam_all_allocated(self):
         bam = self.img.block(M.ts_to_block(18, 0))

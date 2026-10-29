@@ -1,5 +1,5 @@
 ; ls [-l] [-a] [path...]: list directory contents
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, perr, print, putc, newline, print_dec_w, strlen
 .importzp lp1
 idx   = $23

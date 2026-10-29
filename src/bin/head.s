@@ -1,5 +1,5 @@
 ; head [-n] [file]: first n (10) lines
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import argn, open_or_die, getc, set_input, putc, parse_dec
 .importzp lp1
 n   = $23

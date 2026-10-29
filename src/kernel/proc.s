@@ -1,4 +1,4 @@
-; c64os processes: table, scheduler, context switch, IRQ, signals
+; Breadbin processes: table, scheduler, context switch, IRQ, signals
 ;
 ; Context switch model: the kernel is not preemptible (in_kernel != 0);
 ; user code is. Every saved context lives inside a call to `sched`: it

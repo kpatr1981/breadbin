@@ -1,5 +1,5 @@
-10 rem c64os basic demo
-20 print "hello from basic on c64os!"
+10 rem breadbin basic demo
+20 print "hello from basic on breadbin!"
 30 for i = 1 to 5
 40 print i; " squared is "; i * i
 50 next i

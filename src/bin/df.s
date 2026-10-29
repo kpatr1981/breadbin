@@ -1,5 +1,5 @@
 ; df: free space on / and /tmp
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, print_dec_w, newline
 .segment "CODE"
         lda #<hdr

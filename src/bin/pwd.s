@@ -1,5 +1,5 @@
 ; pwd: print working directory
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, newline
 .segment "CODE"
         lda #<buf

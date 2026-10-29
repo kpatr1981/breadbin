@@ -1,5 +1,5 @@
 ; help: show /etc/help
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import open_or_die
 fd = $23
 .segment "CODE"

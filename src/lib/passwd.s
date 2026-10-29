@@ -1,6 +1,6 @@
 ; /etc/passwd access. Lines: name:hash:uid:home
 ;   hash is 4 hex digits of pw_hash(password), or empty for no password
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .importzp lp1
 .import set_input, getc, parse_dec
 .export pw_open, pw_next, pw_find_uid, pw_find_name, pw_hash

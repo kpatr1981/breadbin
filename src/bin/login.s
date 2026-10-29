@@ -1,5 +1,5 @@
 ; login: ask for a user name (and password), then run that user's shell
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, eprint, newline, putc, pw_find_name, pw_hash
 .import pw_hashs, pw_uid, pw_home, pw_name
 .importzp lp1
@@ -131,7 +131,7 @@ read_secret:
         jsr SYS_CONMODE
         jmp newline
 .segment "RODATA"
-s_login: .byte 10, "c64os login: ", 0
+s_login: .byte 10, "breadbin login: ", 0
 s_pass:  .byte "password: ", 0
 s_bad:   .byte "login incorrect", 10, 0
 sh_path: .byte "/bin/sh", 0

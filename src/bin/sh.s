@@ -1,4 +1,4 @@
-; sh: the c64os shell
+; sh: the Breadbin shell
 ;
 ;   cmd args...            run /bin/cmd (or a path containing '/')
 ;   a | b | c              pipelines
@@ -8,7 +8,7 @@
 ;   "quoted words", # comments
 ; Built-ins: cd, exit, kill (also /bin/kill), jobs. `sh file` runs a script.
 ; Words with * or ? are expanded against the directory they name.
-.include "../../include/c64os.inc"
+.include "../../include/breadbin.inc"
 .import print, eprint, putc, newline, print_dec, perr, argn, strlen, exit, parse_dec
 .importzp lp1, lp2
 
