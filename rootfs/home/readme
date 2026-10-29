@@ -1,0 +1,13 @@
+c64os is a small unix-like operating system
+for the commodore 64.
+
+it has a real kernel with preemptive
+multitasking, a unix style filesystem with
+directories on the 1541 disk, pipes, and
+programs that are loaded from /bin.
+
+try:
+  ls /bin
+  cat /home/readme | grep unix | wc
+  count > /dev/null &
+  ps
