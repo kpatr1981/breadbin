@@ -28,6 +28,7 @@ SYS_PROCINFO = SYS_BASE + 3*19
 SYS_MEMINFO  = SYS_BASE + 3*20
 SYS_FSINFO   = SYS_BASE + 3*21
 SYS_TIME     = SYS_BASE + 3*22
+SYS_ISATTY   = SYS_BASE + 3*23
 
 ; argument registers (zero page, saved per process)
 r0 = $02

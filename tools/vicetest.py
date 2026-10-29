@@ -130,13 +130,14 @@ class Vice:
         return "\n".join(self.screen_lines())
 
     def type(self, text):
-        """Type text; '\\n' is RETURN. Fed in small pieces."""
+        """Type text; '\\n' is RETURN, '|' is sent as SHIFT+'-' (PETSCII $dd).
+        Fed in small pieces so the 10-key KERNAL buffer never overflows."""
         for chunk in re.findall(r"[^\n]{1,8}|\n", text):
-            esc = chunk.replace("\\", "\\\\").replace('"', '\\"')
             if chunk == "\n":
-                self._cmd('keybuf "\\x0d"')
+                esc = "\\x0d"
             else:
-                self._cmd(f'keybuf "{esc}"')
+                esc = chunk.replace("\\", "\\\\").replace("|", "\\xdd").replace(" ", "\\x20")
+            self._cmd("keybuf " + esc)
             self._cmd("x", wait=0.25)
 
     def wait_for(self, text, timeout=60, after=None):
@@ -149,27 +150,41 @@ class Vice:
             time.sleep(0.5)
         raise TimeoutError(f"{text!r} not on screen:\n{self.screen()}")
 
-    def run(self, command, prompt="$ ", timeout=60):
-        """Type a command line, wait for the next prompt, return the output
-        between the command line and the new prompt."""
-        marker = command.strip()
+    PROMPT = re.compile(r"^\S+ \$$")
+
+    def run(self, command, timeout=90, clear=True):
+        """Run a command line and return its output (the lines between the
+        command and the next prompt). Commands must fit on one screen line."""
+        if clear:
+            self.type("clear\n")
+            self._wait(lambda ls: self.PROMPT.match(ls[0]) and not any(ls[1:]), timeout)
         self.type(command + "\n")
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            lines = self.screen_lines()
+        want = "$ " + command.strip()
+        result = []
+
+        def done(lines):
             idx = None
             for i in range(len(lines) - 1, -1, -1):
-                if lines[i].endswith(marker) and prompt in lines[i]:
+                if lines[i].endswith(want):
                     idx = i
                     break
-            if idx is not None:
-                rest = lines[idx + 1:]
-                for j, l in enumerate(rest):
-                    if l.rstrip().endswith(prompt.rstrip()) and l.find(prompt.rstrip()) >= 0 \
-                            and l.rstrip().endswith("$"):
-                        return "\n".join(rest[:j])
-            time.sleep(0.5)
-        raise TimeoutError(f"no prompt after {command!r}:\n{self.screen()}")
+            if idx is None:
+                return False
+            for j in range(idx + 1, len(lines)):
+                if self.PROMPT.match(lines[j]):
+                    result[:] = lines[idx + 1:j]
+                    return True
+            return False
+        self._wait(done, timeout, what=command)
+        return "\n".join(result)
+
+    def _wait(self, pred, timeout, what="condition"):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if pred(self.screen_lines()):
+                return
+            time.sleep(0.4)
+        raise TimeoutError(f"timeout waiting for {what}:\n{self.screen()}")
 
 
 if __name__ == "__main__":

@@ -293,6 +293,20 @@ sys_open:
         sta f_type,x
 @inst:  jmp fd_install
 
+; isatty(A = fd): carry clear if fd is the console
+.export sys_isatty
+sys_isatty:
+        jsr fd_get
+        bcs @r
+        lda f_type,x
+        cmp #FT_CON
+        beq @y
+        lda #EINVAL
+        sec
+@r:     rts
+@y:     clc
+        rts
+
 ; close(A = fd)
 sys_close:
         jsr fd_slot

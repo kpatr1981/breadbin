@@ -13,14 +13,102 @@ lval = $3a              ; 2 bytes
 
 .export print, eprint, fprint, putc, eputc, newline, print_dec, print_dec_w
 .export strlen, parse_dec, strcmp, argn, perr, errstr, exit, write_buf
-.export fputc, print_hex
+.export fputc, print_hex, getc, set_input, open_or_die, basename
 
 .segment "BSS"
 lchar:  .res 1
+rd_fd:  .res 1
+rd_pos: .res 1
+rd_len: .res 1
+rd_buf: .res 256
 ldec:   .res 7
 
 .segment "CODE"
 exit:   jmp SYS_EXIT
+
+; set_input: A = fd for getc
+set_input:
+        sta rd_fd
+        lda #0
+        sta rd_pos
+        sta rd_len
+        rts
+
+; getc -> A = next byte of the input fd; carry set at EOF
+getc:   ldx rd_pos
+        cpx rd_len
+        bne @have
+        lda #<rd_buf
+        sta r0
+        lda #>rd_buf
+        sta r0+1
+        lda #0
+        sta r1
+        lda #1
+        sta r1+1
+        lda rd_fd
+        jsr SYS_READ
+        bcs @eof
+        lda r1+1
+        bne @full
+        lda r1
+        beq @eof
+        sta rd_len
+        jmp @z
+@full:  lda #0              ; 256 bytes: rd_len 0 means 256
+        sta rd_len
+@z:     ldx #0
+        stx rd_pos
+        lda rd_buf,x
+        inc rd_pos
+        clc
+        rts
+@have:  lda rd_buf,x
+        inc rd_pos
+        clc
+        rts
+@eof:   lda #0
+        sta rd_len
+        sta rd_pos
+        sec
+        rts
+
+; open_or_die: A/X = path, Y = flags -> A = fd; on error prints and exits 1
+open_or_die:
+        sta lp3
+        stx lp3+1
+        sta r0
+        stx r0+1
+        tya
+        jsr SYS_OPEN
+        bcc @r
+        ldx lp3
+        ldy lp3+1
+        jsr perr
+        lda #1
+        jmp SYS_EXIT
+@r:     rts
+
+; basename: A/X = path -> A/X = part after the last '/'
+basename:
+        sta lp1
+        stx lp1+1
+        ldy #0
+        sty lt0
+@l:     lda (lp1),y
+        beq @d
+        iny
+        cmp #'/'
+        bne @l
+        sty lt0
+        jmp @l
+@d:     lda lp1
+        clc
+        adc lt0
+        ldx lp1+1
+        bcc @r
+        inx
+@r:     rts
 
 ; strlen: A/X = string -> Y = A = length (max 255)
 strlen:

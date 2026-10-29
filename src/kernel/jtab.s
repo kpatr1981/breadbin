@@ -5,8 +5,9 @@
 ; handler. Handlers return carry/A/X/r-registers; `sys_return` acts on
 ; pending signals and deferred reschedules before going back to user code.
 .include "k.inc"
+.import sys_isatty
 
-NSYS = 23
+NSYS = 24
 STUBSZ = 8
 
 .segment "JUMPTAB"
@@ -68,9 +69,9 @@ sys_lo: .lobytes sys_exit-1, sys_spawn-1, sys_wait-1, sys_kill-1, sys_getpid-1
         .lobytes sys_yield-1, sys_sleep-1, sys_open-1, sys_close-1, sys_read-1
         .lobytes sys_write-1, sys_pipe-1, sys_mkdir-1, sys_rmdir-1, sys_unlink-1
         .lobytes sys_rename-1, sys_chdir-1, sys_getcwd-1, sys_stat-1
-        .lobytes sys_procinfo-1, sys_meminfo-1, sys_fsinfo-1, sys_time-1
+        .lobytes sys_procinfo-1, sys_meminfo-1, sys_fsinfo-1, sys_time-1, sys_isatty-1
 sys_hi: .hibytes sys_exit-1, sys_spawn-1, sys_wait-1, sys_kill-1, sys_getpid-1
         .hibytes sys_yield-1, sys_sleep-1, sys_open-1, sys_close-1, sys_read-1
         .hibytes sys_write-1, sys_pipe-1, sys_mkdir-1, sys_rmdir-1, sys_unlink-1
         .hibytes sys_rename-1, sys_chdir-1, sys_getcwd-1, sys_stat-1
-        .hibytes sys_procinfo-1, sys_meminfo-1, sys_fsinfo-1, sys_time-1
+        .hibytes sys_procinfo-1, sys_meminfo-1, sys_fsinfo-1, sys_time-1, sys_isatty-1

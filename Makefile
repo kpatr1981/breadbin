@@ -4,7 +4,8 @@ KSRC    := $(wildcard src/kernel/*.s)
 KOBJ    := $(patsubst src/kernel/%.s,$(BUILD)/k/%.o,$(KSRC))
 PROGS   := $(patsubst src/bin/%.s,%,$(wildcard src/bin/*.s))
 CX      := $(patsubst %,$(BUILD)/root/bin/%,$(PROGS))
-LIBOBJ  := $(BUILD)/lib/lib.o
+LIBSRC  := $(wildcard src/lib/*.s)
+LIBOBJ  := $(BUILD)/lib/c64os.lib
 ROOTSRC := $(shell find rootfs -type f)
 
 .PHONY: all clean test test-host run run-reu
@@ -21,6 +22,10 @@ $(BUILD)/c64os.prg: $(KOBJ) src/kernel.cfg
 $(BUILD)/lib/%.o: src/lib/%.s include/c64os.inc
 	@mkdir -p $(dir $@)
 	ca65 -g $< -o $@
+
+$(LIBOBJ): $(patsubst src/lib/%.s,$(BUILD)/lib/%.o,$(LIBSRC))
+	rm -f $@
+	ar65 a $@ $^
 
 $(BUILD)/p/%.o: src/bin/%.s include/c64os.inc
 	@mkdir -p $(dir $@)
