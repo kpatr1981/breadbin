@@ -87,3 +87,7 @@ Extract a file from a disk image on the host:
 python3 tools/mkimage.py ls  build/breadbin.d64 /home
 python3 tools/mkimage.py cat build/breadbin.d64 /home/readme
 ```
+
+## License
+
+MIT - see [LICENSE](LICENSE). Copyright (c) 2026 Konstantinos Patronas <kpatronas@gmail.com>.
