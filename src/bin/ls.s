@@ -19,8 +19,7 @@ COLW  = 13
         lda #1
         jsr SYS_ISATTY
         lda #0
-        rol a               ; carry clear = tty -> 0
-        eor #1
+        rol a               ; carry set = not a terminal -> one per line
         sta tty
         ; options
         lda #1

@@ -96,6 +96,54 @@ class Boot(unittest.TestCase):
         out = self.run_("cat /home/readme | head -3 | wc")
         self.assertEqual(out.split()[0], "3")
 
+    def test_12_sigpipe(self):
+        out = self.run_("ls /bin | head -2")
+        self.assertEqual(len(out.splitlines()), 2)
+        self.assertNotIn("ls", self.run_("ps").split()[5:])
+
+    def test_13_ctrl_c_blocked_reader(self):
+        # cat with no args blocks reading the console; RUN/STOP kills it
+        self.v.type("clear\n")
+        self.v.wait_for("$")
+        self.v.type("cat\n")
+        self.v.wait_for("$ cat")
+        import time
+        time.sleep(3)
+        self.v._cmd("keybuf \\x03")
+        self.v._cmd("x")
+        self.v._wait(lambda ls: any(l.endswith(" $") for l in ls[1:]), 60)
+        self.assertNotIn("cat", self.run_("ps").split()[5:])
+
+    def test_14_ctrl_c_busy_foreground(self):
+        self.v.type("clear\n")
+        self.v.wait_for("$")
+        self.v.type("count\n")
+        self.v.wait_for("3")
+        self.v._cmd("keybuf \\x03")
+        self.v._cmd("x")
+        import time
+        time.sleep(3)
+        self.assertNotIn("count", self.run_("ps"))
+
+    def test_15_too_many_processes(self):
+        # init + sh + 10 jobs fill the 12-slot process table
+        pids = []
+        for _ in range(10):
+            pids.append(self.run_("sleep 9999 &").strip("[]"))
+        out = self.v.run("sleep 9999 &", clear=False)
+        self.assertIn("too many processes", out)
+        self.v.run("kill " + " ".join(pids[:5]), clear=False)
+        self.v.run("kill " + " ".join(pids[5:]), clear=False)
+        self.assertEqual(self.run_("echo alive"), "alive")
+        self.assertNotIn("sleep", self.run_("ps"))
+
+    def test_16_paths(self):
+        self.assertIn("cat", self.run_("ls /bin/").split())
+        self.run_("cd /..")
+        self.assertEqual(self.run_("pwd"), "/")
+        self.assertIn("too long", self.run_("echo x > /home/abcdefghijklmnop").replace("\n", ""))
+        self.assertIn("not a directory", self.run_("ls /etc/motd/x"))
+
 
 if __name__ == "__main__":
     unittest.main()

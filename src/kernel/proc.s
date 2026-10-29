@@ -32,7 +32,6 @@ wk_ch:    .res 1
 .export p_pslot, new_slot, proc_entry
 
 .segment "RODATA"
-s_stk:  .byte "stack overflow", 0
 s_init: .byte "init exited", 0
 
 .segment "CODE"
@@ -99,9 +98,9 @@ sched:
         stx tmp2
         cpx #$ff - STKSAVE
         bcs @stkok
-        lda #<s_stk
-        ldx #>s_stk
-        jmp panic
+        ; the process overflowed its stack area: it cannot be saved, kill it
+        lda #128+11
+        jmp proc_exit
 @stkok: ldx cur
         lda tmp2
         sta p_sp,x
@@ -234,7 +233,15 @@ irq:
 @t:     jsr con_cursor_tick
         lda #CH_TICK
         jsr wakeup
-        ; RUN/STOP edge -> SIGINT to foreground processes
+        ; RUN/STOP in the keyboard buffer -> SIGINT (and drop the key)
+        ldx $c6
+        beq @nokb
+        lda $0276,x
+        cmp #$03
+        bne @nokb
+        dec $c6
+        jsr sigint_fg
+@nokb:  ; RUN/STOP edge -> SIGINT to foreground processes
         lda $91
         cmp #$7f
         bne @nostop

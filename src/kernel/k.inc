@@ -2,7 +2,7 @@
 .include "../../include/c64os.inc"
 
 KSTART  = $9000     ; must match KRAM in kernel.cfg
-MAXPROC = 8
+MAXPROC = 12
 NFD     = 8         ; fds per process
 NFILE   = 24        ; system open-file table
 NPIPE   = 4

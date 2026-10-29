@@ -6,9 +6,9 @@
 ;   cmd &                  background job
 ;   a ; b                  sequence
 ;   "quoted words", # comments
-; Built-ins: cd, exit. `sh file` runs a script.
+; Built-ins: cd, exit, kill (also /bin/kill). `sh file` runs a script.
 .include "../../include/c64os.inc"
-.import print, eprint, putc, newline, print_dec, perr, argn, strlen, exit
+.import print, eprint, putc, newline, print_dec, perr, argn, strlen, exit, parse_dec
 .importzp lp1, lp2
 
 MAXTOK  = 32
@@ -55,6 +55,9 @@ outf_hi: .res 1
 outapp:  .res 1
 cwd:     .res 64
 tmpb:    .res 1
+bk_sig:  .res 1
+bk_i:    .res 1
+bk_p:    .res 2
 tpos:    .res 1
 
 .segment "CODE"
@@ -648,7 +651,15 @@ builtin:
         jsr perr
 @done:  sec
         rts
-@nocd:  lda #<s_exit
+@nocd:  lda #<s_kill
+        sta lp2
+        lda #>s_kill
+        sta lp2+1
+        jsr strcmp_
+        bne @nokill
+        jmp bi_kill
+@nokill:
+        lda #<s_exit
         sta lp2
         lda #>s_exit
         sta lp2+1
@@ -657,6 +668,56 @@ builtin:
         lda #0
         jmp exit
 @no:    clc
+        rts
+
+; kill [-signal] pid... as a built-in, so a full process table can be
+; cleared (the shell needs no new process to send a signal)
+bi_kill:
+        lda #SIGTERM
+        sta bk_sig
+        lda #1
+        sta bk_i
+        lda nargs
+        cmp #2
+        bcc @done
+        lda av+2
+        sta zp1
+        lda av+3
+        sta zp1+1
+        ldy #0
+        lda (zp1),y
+        cmp #'-'
+        bne @l
+        lda zp1
+        clc
+        adc #1
+        ldx zp1+1
+        bcc @p
+        inx
+@p:     jsr parse_dec
+        bcs @done
+        sta bk_sig
+        inc bk_i
+@l:     lda bk_i
+        cmp nargs
+        bcs @done
+        asl a
+        tay
+        lda av,y
+        ldx av+1,y
+        sta bk_p
+        stx bk_p+1
+        jsr parse_dec
+        bcs @bad
+        ldx bk_sig
+        jsr SYS_KILL
+        bcc @n
+@bad:   ldx bk_p
+        ldy bk_p+1
+        jsr perr
+@n:     inc bk_i
+        jmp @l
+@done:  sec
         rts
 
 strcmp_:
@@ -678,4 +739,5 @@ s_toolong: .byte "sh: line too long", 10, 0
 s_bin:     .byte "/bin/"
 s_cd:      .byte "cd", 0
 s_exit:    .byte "exit", 0
+s_kill:    .byte "kill", 0
 s_root:    .byte "/", 0
