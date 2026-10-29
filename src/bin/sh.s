@@ -6,7 +6,8 @@
 ;   cmd &                  background job
 ;   a ; b                  sequence
 ;   "quoted words", # comments
-; Built-ins: cd, exit, kill (also /bin/kill). `sh file` runs a script.
+; Built-ins: cd, exit, kill (also /bin/kill), jobs. `sh file` runs a script.
+; Words with * or ? are expanded against the directory they name.
 .include "../../include/c64os.inc"
 .import print, eprint, putc, newline, print_dec, perr, argn, strlen, exit, parse_dec
 .importzp lp1, lp2
@@ -59,6 +60,20 @@ qch:     .res 1
 bk_sig:  .res 1
 bk_i:    .res 1
 bk_p:    .res 2
+pinfo:   .res 16
+g_tok:   .res 1
+g_word:  .res 2
+g_d:     .res 1
+g_dir:   .res 48
+g_fd:    .res 1
+g_n:     .res 1
+g_ent:   .res 16
+g_p:     .res 1
+g_s:     .res 1
+g_star:  .res 1
+g_ss:    .res 1
+gpos:    .res 2
+gbuf:    .res 256
 tpos:    .res 1
 
 .segment "CODE"
@@ -301,6 +316,8 @@ tokenize:
 ; ---- execution ----
 run_line:
         lda #0
+        sta gpos
+        sta gpos+1
         sta cur_tok
 @cmd:   lda cur_tok
         cmp ntok
@@ -354,24 +371,30 @@ stage:  lda #0
         sta outapp
         ldx st_start
 @t:     cpx cmd_end
-        beq @tend
-        lda ttype,x
+        bne @t1
+@jtend: jmp @tend
+@t1:    lda ttype,x
         cmp #'|'
-        beq @tend
+        beq @jtend
         cmp #T_WORD
         bne @op
         ldy nargs
         cpy #MAXARG
         bcc @aok
         jmp syntax
-@aok:   tya
-        asl a
-        tay
-        lda tlo,x
-        sta av,y
+@aok:   lda tlo,x
+        sta zp1
         lda thi,x
-        sta av+1,y
-        inc nargs
+        sta zp1+1
+        stx g_tok
+        jsr is_glob
+        bcs @lit
+        jsr glob
+        ldx g_tok
+        inx
+        jmp @t
+@lit:   jsr add_arg
+        ldx g_tok
         inx
         jmp @t
 @op:    cmp #'&'
@@ -544,6 +567,232 @@ stage:  lda #0
         bne @w
 @r:     rts
 
+; add_arg: av[nargs++] = zp1 (silently ignored when full)
+add_arg:
+        lda nargs
+        cmp #MAXARG
+        bcs @r
+        asl a
+        tay
+        lda zp1
+        sta av,y
+        lda zp1+1
+        sta av+1,y
+        inc nargs
+@r:     rts
+
+; is_glob: carry clear if the word at zp1 contains * or ?
+is_glob:
+        ldy #0
+@l:     lda (zp1),y
+        beq @no
+        cmp #'*'
+        beq @y
+        cmp #'?'
+        beq @y
+        iny
+        bne @l
+@no:    sec
+        rts
+@y:     clc
+        rts
+
+; glob: expand the pattern word at zp1 into av (literal if nothing matches)
+glob:   lda zp1
+        sta g_word
+        lda zp1+1
+        sta g_word+1
+        ; d = index after the last '/'
+        ldy #0
+        sty g_d
+@s:     lda (zp1),y
+        beq @se
+        iny
+        cmp #'/'
+        bne @s
+        sty g_d
+        jmp @s
+@se:    ; directory to read
+        ldy g_d
+        bne @dir
+        lda #'.'
+        sta g_dir
+        lda #0
+        sta g_dir+1
+        jmp @open
+@dir:   ldy #0
+@dc:    cpy g_d
+        beq @dz
+        lda (zp1),y
+        sta g_dir,y
+        iny
+        cpy #47
+        bcc @dc
+@dz:    cpy #1
+        beq @root
+        dey                 ; drop the trailing '/'
+@root:  lda #0
+        sta g_dir,y
+@open:  lda #<g_dir
+        sta r0
+        lda #>g_dir
+        sta r0+1
+        lda #O_RDONLY
+        jsr SYS_OPEN
+        bcs @lit
+        sta g_fd
+        lda #0
+        sta g_n
+@rd:    lda #<g_ent
+        sta r0
+        lda #>g_ent
+        sta r0+1
+        lda #16
+        sta r1
+        lda #0
+        sta r1+1
+        lda g_fd
+        jsr SYS_READ
+        bcs @done
+        lda r1
+        cmp #16
+        bne @done
+        lda g_ent
+        beq @rd
+        ; hidden names only match a pattern that starts with '.'
+        lda g_ent+1
+        cmp #'.'
+        bne @m
+        lda g_word
+        clc
+        adc g_d
+        sta zp2
+        lda g_word+1
+        adc #0
+        sta zp2+1
+        ldy #0
+        lda (zp2),y
+        cmp #'.'
+        bne @rd
+@m:     jsr match
+        bcs @rd
+        jsr g_store
+        bcs @done
+        inc g_n
+        jmp @rd
+@done:  lda g_fd
+        jsr SYS_CLOSE
+        lda g_n
+        bne @r
+@lit:   lda g_word
+        sta zp1
+        lda g_word+1
+        sta zp1+1
+        jmp add_arg
+@r:     rts
+
+; g_store: append word[0..d) + name to the glob buffer and add it to av
+g_store:
+        lda gpos+1
+        bne @full
+        lda gpos
+        cmp #256-64
+        bcs @full
+        lda #<gbuf
+        clc
+        adc gpos
+        sta zp1
+        lda #>gbuf
+        adc gpos+1
+        sta zp1+1
+        lda g_word
+        sta zp2
+        lda g_word+1
+        sta zp2+1
+        ldy #0
+@p:     cpy g_d
+        beq @pd
+        lda (zp2),y
+        sta (zp1),y
+        iny
+        bne @p
+@pd:    ldx #0
+@n:     lda g_ent+1,x
+        sta (zp1),y
+        beq @e
+        iny
+        inx
+        cpx #15
+        bcc @n
+        lda #0
+        sta (zp1),y
+@e:     iny
+        tya
+        clc
+        adc gpos
+        sta gpos
+        bcc @a
+        inc gpos+1
+@a:     jsr add_arg
+        clc
+        rts
+@full:  sec
+        rts
+
+; match: pattern (word + d) against the name g_ent+1 -> carry clear if it matches
+match:  lda #0
+        sta g_p
+        sta g_s
+        lda #$ff
+        sta g_star
+        lda g_word
+        clc
+        adc g_d
+        sta zp2
+        lda g_word+1
+        adc #0
+        sta zp2+1
+@loop:  ldx g_s
+        lda g_ent+1,x
+        beq @tail
+        ldy g_p
+        lda (zp2),y
+        cmp #'?'
+        beq @adv
+        cmp g_ent+1,x
+        beq @adv
+        cmp #'*'
+        bne @back
+        sty g_star
+        inc g_p
+        stx g_ss
+        jmp @loop
+@adv:   inc g_p
+        inc g_s
+        jmp @loop
+@back:  lda g_star
+        cmp #$ff
+        beq @no
+        tay
+        iny
+        sty g_p
+        inc g_ss
+        lda g_ss
+        sta g_s
+        jmp @loop
+@tail:  ldy g_p
+@t:     lda (zp2),y
+        cmp #'*'
+        bne @end
+        iny
+        bne @t
+@end:   cmp #0
+        bne @no
+        clc
+        rts
+@no:    sec
+        rts
+
 close_pin:
         lda pin
         beq @r
@@ -663,6 +912,14 @@ builtin:
         bne @nokill
         jmp bi_kill
 @nokill:
+        lda #<s_jobs
+        sta lp2
+        lda #>s_jobs
+        sta lp2+1
+        jsr strcmp_
+        bne @nojobs
+        jmp bi_jobs
+@nojobs:
         lda #<s_exit
         sta lp2
         lda #>s_exit
@@ -724,6 +981,44 @@ bi_kill:
 @done:  sec
         rts
 
+; jobs: background children of this shell (from the process table)
+bi_jobs:
+        jsr SYS_GETPID
+        sta bk_sig          ; my pid
+        lda #0
+        sta bk_i
+@l:     lda #<pinfo
+        sta r0
+        lda #>pinfo
+        sta r0+1
+        lda bk_i
+        jsr SYS_PROCINFO
+        bcs @n
+        lda pinfo+1
+        cmp bk_sig
+        bne @n
+        lda pinfo+2
+        cmp #3              ; zombie: finished, reaped at the next prompt
+        beq @n
+        lda #'['
+        jsr putc
+        lda pinfo
+        ldx #0
+        jsr print_dec
+        lda #<s_run
+        ldx #>s_run
+        jsr print
+        lda #<(pinfo+5)
+        ldx #>(pinfo+5)
+        jsr print
+        jsr newline
+@n:     inc bk_i
+        lda bk_i
+        cmp #16
+        bne @l
+        sec
+        rts
+
 strcmp_:
         ldy #0
 @l:     lda (lp1),y
@@ -744,4 +1039,6 @@ s_bin:     .byte "/bin/"
 s_cd:      .byte "cd", 0
 s_exit:    .byte "exit", 0
 s_kill:    .byte "kill", 0
+s_jobs:    .byte "jobs", 0
+s_run:     .byte "] running  ", 0
 s_root:    .byte "/", 0

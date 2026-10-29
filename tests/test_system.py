@@ -20,7 +20,7 @@ class Boot(unittest.TestCase):
         with open(IMAGE, "rb") as f, open(cls.img, "wb") as g:
             g.write(f.read())
         cls.v = Vice(cls.img)
-        cls.v.wait_for("/ $", timeout=90)
+        cls.v.wait_shell()
 
     @classmethod
     def tearDownClass(cls):
@@ -176,6 +176,65 @@ class Boot(unittest.TestCase):
         self.assertLess(time.time() - t, 30)
         self.v.run("kill " + " ".join(pids), clear=False)
 
+    def test_22_easy_commands(self):
+        self.assertEqual(self.run_("whoami"), "root")
+        self.assertTrue(self.run_("uptime").startswith("up "))
+        self.run_("date 13:45:10")
+        self.assertTrue(self.run_("date").startswith("13:4"))
+        self.assertEqual(self.run_("version"), "c64os 0.2")
+        self.assertIn("size: 53", self.run_("stat /etc/motd"))
+        self.assertIn("0000: 77 65 6c 63", self.run_("hexdump /etc/motd | head -1"))
+        self.assertIn("themes:", self.run_("theme nosuch"))
+        self.run_("theme green")
+
+    def test_23_wildcards_and_jobs(self):
+        self.assertEqual(self.run_("echo /home/*.bas"), "/home/hello.bas")
+        self.assertEqual(self.run_("echo /bin/s?"), "/bin/sh")
+        self.assertEqual(self.run_("echo /nomatch*"), "/nomatch*")
+        pid = self.run_("sleep 999 &").strip("[]")
+        self.assertIn("[" + pid + "] running  sleep", self.run_("jobs"))
+        self.run_("kill " + pid)
+
+    def test_24_editor(self):
+        import time
+        self.v.type("clear\n")
+        self.v.wait_for("$")
+        self.v.type("edit /home/e.txt\n")
+        self.v.wait_for("edit:", timeout=60)
+        self.v.type("hello\nworld")
+        time.sleep(2)
+        self.v._cmd("keybuf \\x91\\x1d\\x1dX")   # up, right, right, X
+        self.v._cmd("x")
+        time.sleep(2)
+        self.v._cmd("keybuf \\x0f")                  # ^O save
+        self.v._cmd("x")
+        self.v.wait_for(" saved")
+        self.v._cmd("keybuf \\x18")                  # ^X quit
+        self.v._cmd("x")
+        time.sleep(3)
+        self.assertEqual(self.run_("cat /home/e.txt | wc"), "     1      2     12")
+
+    def test_25_login_password(self):
+        import time
+        self.v.type("clear\npasswd\n")
+        self.v.wait_for("new password:")
+        self.v.type("secret\n")
+        self.v.wait_for("again:")
+        self.v.type("secret\n")
+        self.v.wait_for("password changed")
+        self.v.type("exit\n")                         # log out: back to login
+        self.v.wait_for("login:")
+        self.v.type("root\n")
+        self.v.wait_for("password:")
+        self.v.type("wrong\n")
+        self.v.wait_for("login incorrect")
+        self.v.type("root\n")
+        self.v.wait_for("password:")
+        self.v.type("secret\n")
+        time.sleep(4)
+        self.assertEqual(self.run_("whoami"), "root")
+        self.assertIn("root:", self.run_("cat /etc/passwd"))
+
 
 class Persistence(unittest.TestCase):
     """Files written by c64os survive a reboot and are readable on the host."""
@@ -185,14 +244,14 @@ class Persistence(unittest.TestCase):
         with open(IMAGE, "rb") as f, open(img, "wb") as g:
             g.write(f.read())
         with Vice(img) as v:
-            v.wait_for("/ $", timeout=90)
+            v.wait_shell()
             v.run("mkdir /home/keep")
             v.run("echo persistent data > /home/keep/f")
         out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "mkimage.py"),
                               "cat", img, "/home/keep/f"], capture_output=True, text=True)
         self.assertEqual(out.stdout, "persistent data\n")
         with Vice(img) as v:
-            v.wait_for("/ $", timeout=90)
+            v.wait_shell()
             self.assertEqual(v.run("cat /home/keep/f"), "persistent data")
 
 
@@ -201,7 +260,7 @@ class REU(unittest.TestCase):
 
     def test_tmp_ramdisk(self):
         with Vice(IMAGE, reu=True) as v:
-            v.wait_for("/ $", timeout=90)
+            v.wait_shell()
             self.assertIn("reu: 8 x 64k", v.screen())
             self.assertIn("/tmp", v.run("df"))
             v.run("echo hi > /tmp/x")

@@ -21,6 +21,7 @@ p_sig:    .res MAXPROC
 p_exit:   .res MAXPROC
 p_cwdino: .res MAXPROC
 p_cwddev: .res MAXPROC
+p_uid:    .res MAXPROC
 p_wk0:    .res MAXPROC      ; sleep deadline (jiffies)
 p_wk1:    .res MAXPROC
 p_wk2:    .res MAXPROC
@@ -32,7 +33,7 @@ next_pid: .res 1
 new_slot: .res 1
 wk_ch:    .res 1
 
-.export p_pslot, new_slot, proc_entry
+.export p_pslot, new_slot, proc_entry, p_uid, sys_getuid, sys_setuid
 
 .segment "RODATA"
 s_init: .byte "init exited", 0
@@ -335,6 +336,9 @@ proc_exit:
         ldx #>s_init
         jmp panic
 @notinit:
+        .import con_release
+        jsr con_release     ; A = pid: leave raw console mode
+        ldx cur
         ; close fds
         txa
         asl a
@@ -530,6 +534,29 @@ sys_sleep:
         jsr block_on
         jmp @l
 @done:  clc
+        rts
+
+; getuid() -> A = uid
+sys_getuid:
+        ldx cur
+        lda p_uid,x
+        clc
+        rts
+
+; setuid(A = uid): only uid 0 (root) may change it
+sys_setuid:
+        ldx cur
+        ldy p_uid,x
+        bne @perm
+        sta p_uid,x
+        clc
+        rts
+@perm:  cmp p_uid,x
+        beq @ok
+        lda #EPERM
+        sec
+        rts
+@ok:    clc
         rts
 
 ; time() -> A/X/Y = jiffies lo/mid/hi

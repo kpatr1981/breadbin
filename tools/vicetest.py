@@ -140,6 +140,19 @@ class Vice:
             self._cmd("keybuf " + esc)
             self._cmd("x", wait=0.25)
 
+    def wait_shell(self, user="root", timeout=90):
+        """Boot to a shell prompt, logging in as `user` if asked."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self.screen()
+            if "login:" in s:
+                self.type(user + "\n")
+                return self.wait_for(" $", timeout=timeout)
+            if s.rstrip().endswith("/ $"):
+                return s
+            time.sleep(0.5)
+        raise TimeoutError("no login or shell prompt:\n" + self.screen())
+
     def wait_for(self, text, timeout=60, after=None):
         """Wait until `text` is on screen; return the screen."""
         deadline = time.time() + timeout

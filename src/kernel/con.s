@@ -17,6 +17,11 @@ cur_t:   .res 1
 cur_save: .res 1
 con_busy: .res 1        ; output in progress: the IRQ must not blink
 con_eof: .res 1
+esc_st:  .res 1         ; escape sequence state
+esc_row: .res 1
+con_raw: .res 1         ; 1 = raw keys (no echo, no line editing)
+raw_pid: .res 1
+.export con_raw, raw_pid
 dec_buf: .res 6
 
 .segment "CODE"
@@ -101,9 +106,18 @@ con_putc:
         plp
         tsx
         lda $0103,x
-        jsr to_petscii
+        ldx esc_st
+        bne @esc
+        cmp #$1b
+        bne @norm
+        lda #1
+        sta esc_st
+        bne @skip
+@norm:  jsr to_petscii
         beq @skip
         jsr CHROUT
+        jmp @skip
+@esc:   jsr con_escape
 @skip:  dec con_busy
         pla
         tay
@@ -111,6 +125,136 @@ con_putc:
         tax
         pla
         rts
+
+; con_escape: A = next byte of an escape sequence, X = state
+;   ESC = row+32 col+32   move the cursor
+;   ESC R / ESC r          reverse video on / off
+;   ESC K                  clear to the end of the line
+con_escape:
+        cpx #2
+        bne @s3
+        jmp @row
+@s3:    cpx #3
+        bne @s4
+        jmp @col
+@s4:    cpx #4
+        bne @s5
+        jmp @cfg
+@s5:    cpx #5
+        bne @s6
+        jmp @cbg
+@s6:    cpx #6
+        bne @s0
+        jmp @cbo
+@s0:    ldx #0
+        stx esc_st
+        cmp #'='
+        bne @n1
+        lda #2
+        sta esc_st
+        rts
+@n1:    cmp #'R'
+        bne @n2
+        lda #$12
+        jmp CHROUT
+@n2:    cmp #'r'
+        bne @n3
+        lda #$92
+        jmp CHROUT
+@n3:    cmp #'C'
+        bne @n4
+        lda #4              ; ESC C fg+32 bg+32 border+32
+        sta esc_st
+        rts
+@n4:    cmp #'K'
+        bne @r
+        ldy $d3
+        ldx #40
+        cpy #40
+        bcc @k
+        ldx #80
+@k:     stx tmp0
+@kl:    cpy tmp0
+        bcs @r
+        lda #$20
+        sta ($d1),y
+        lda $0286
+        sta ($f3),y
+        iny
+        bne @kl
+@r:     rts
+@row:   sec
+        sbc #32
+        sta esc_row
+        lda #3
+        sta esc_st
+        rts
+@cfg:   sec
+        sbc #32
+        and #15
+        sta $0286
+        ; recolour the whole screen
+        ldy #0
+@rc:    sta $d800,y
+        sta $d900,y
+        sta $da00,y
+        sta $db00,y
+        iny
+        bne @rc
+        lda #5
+        sta esc_st
+        rts
+@cbg:   sec
+        sbc #32
+        sta $d021
+        lda #6
+        sta esc_st
+        rts
+@cbo:   sec
+        sbc #32
+        sta $d020
+        lda #0
+        sta esc_st
+        rts
+@col:   sec
+        sbc #32
+        cmp #40
+        bcc @cok
+        lda #39
+@cok:   tay
+        lda #0
+        sta esc_st
+        ldx esc_row
+        cpx #25
+        bcc @rok
+        ldx #24
+@rok:   clc
+        jmp $fff0           ; PLOT
+
+; con_setmode: A = 0 cooked, 1 raw (conmode syscall)
+.export sys_conmode, con_release
+sys_conmode:
+        and #1
+        sta con_raw
+        ldx cur
+        lda p_pid,x
+        sta raw_pid
+        lda #0
+        sta lb_len
+        sta lb_rpos
+        sta lb_ready
+        clc
+        rts
+
+; con_release: A = pid of an exiting process; drop raw mode it set
+con_release:
+        ldx con_raw
+        beq @r
+        cmp raw_pid
+        bne @r
+        lda #0
+        sta con_raw
+@r:     rts
 
 ; ASCII (A) -> PETSCII (A); Z set if nothing to print
 to_petscii:
@@ -288,6 +432,9 @@ con_write:
 ; con_read: cooked read of up to r1 bytes into (r0). Blocks until a line
 ; is complete (or CTRL-D on an empty line = EOF). Returns r1 = count.
 con_read:
+        lda con_raw
+        beq @wait
+        jmp raw_read
 @wait:  lda lb_ready
         bne @copy
         jsr GETIN
@@ -367,3 +514,52 @@ con_read:
         sta lb_ready
 @r:     clc
         rts
+
+; raw_read: one key, no echo. Cursor keys come as control codes:
+;   up ^P($10) down ^N($0e) left ^B($02) right ^F($06) home ^A($01)
+;   clr ^L($0c) del ^H($08) return $0a; F1-F8 as $85-$8c; ctrl-letters $01-$1a
+raw_read:
+@w:     jsr GETIN
+        cmp #0
+        bne @k
+        lda #1
+        sta cur_on
+        lda #CH_TICK
+        jsr block_on
+        jmp @w
+@k:     pha
+        php
+        sei
+        lda #0
+        sta cur_on
+        jsr cursor_hide
+        plp
+        pla
+        ldx #rawmap_n-1
+@m:     cmp rawmap_in,x
+        beq @hit
+        dex
+        bpl @m
+        cmp #$85
+        bcc @c
+        cmp #$8d
+        bcc @store
+@c:     cmp #$1b
+        bcc @store
+        jsr to_ascii
+        beq @w
+        jmp @store
+@hit:   lda rawmap_out,x
+@store: ldy #0
+        sta (r0),y
+        lda #1
+        sta r1
+        lda #0
+        sta r1+1
+        clc
+        rts
+
+.segment "RODATA"
+rawmap_in:  .byte $0d, $14, $91, $11, $9d, $1d, $13, $93
+rawmap_out: .byte $0a, $08, $10, $0e, $02, $06, $01, $0c
+rawmap_n = * - rawmap_out

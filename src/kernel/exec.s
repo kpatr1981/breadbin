@@ -6,7 +6,7 @@
 
 .importzp fb, pp
 .import f_done, p_pslot, new_slot, proc_entry, name_off, con_file
-.import cwd_ptr, nm_dev, nm_ino
+.import cwd_ptr, nm_dev, nm_ino, p_uid
 
 MAXARGS = 16
 
@@ -469,10 +469,14 @@ setup_proc:
         sta p_cwddev,x
         lda #ROOT_INO
         sta p_cwdino,x
+        lda #0
+        sta p_uid,x
         jmp @fd
 @par:   tay
         lda p_pid,y
         sta p_ppid,x
+        lda p_uid,y
+        sta p_uid,x
         lda p_cwddev,y
         sta p_cwddev,x
         lda p_cwdino,y

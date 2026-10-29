@@ -1,7 +1,7 @@
 ; c64os kernel internal definitions
 .include "../../include/c64os.inc"
 
-KSTART  = $9000     ; must match KRAM in kernel.cfg
+KSTART  = $8800     ; must match KRAM in kernel.cfg
 MAXPROC = 12
 NFD     = 8         ; fds per process
 NFILE   = 24        ; system open-file table

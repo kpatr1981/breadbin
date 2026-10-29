@@ -29,6 +29,9 @@ SYS_MEMINFO  = SYS_BASE + 3*20
 SYS_FSINFO   = SYS_BASE + 3*21
 SYS_TIME     = SYS_BASE + 3*22
 SYS_ISATTY   = SYS_BASE + 3*23
+SYS_CONMODE  = SYS_BASE + 3*24
+SYS_GETUID   = SYS_BASE + 3*25
+SYS_SETUID   = SYS_BASE + 3*26
 
 ; argument registers (zero page, saved per process)
 r0 = $02
@@ -82,6 +85,22 @@ ENOSPC  = 28
 EPIPE   = 32
 ENAMETOOLONG = 36
 ENOTEMPTY = 39
+
+; console: raw-mode key codes and output escapes
+K_UP    = $10
+K_DOWN  = $0e
+K_LEFT  = $02
+K_RIGHT = $06
+K_HOME  = $01
+K_CLR   = $0c
+K_DEL   = $08
+K_RET   = $0a
+K_F1    = $85
+K_F3    = $86
+K_F5    = $87
+K_F7    = $88
+ESC     = $1b           ; ESC = row+32 col+32, ESC R/r reverse, ESC K clear eol,
+                        ; ESC C fg+32 bg+32 border+32 colours
 
 ; signals
 SIGINT  = 2

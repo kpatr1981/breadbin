@@ -1,0 +1,13 @@
+files:  ls cat cp mv rm mkdir rmdir
+        pwd stat hexdump edit head more
+text:   echo grep wc
+system: ps kill jobs free df uptime
+        date uname version sleep clear
+        theme
+users:  login whoami passwd
+code:   basic as
+disks:  mount umount
+shell:  a | b  > f  >> f  < f  cmd &
+        a ; b  *.bas  cd  exit
+keys:   | is shift + -
+        run/stop interrupts a command
