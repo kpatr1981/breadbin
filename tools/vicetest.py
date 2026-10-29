@@ -107,19 +107,25 @@ class Vice:
         return out.decode(errors="replace")
 
     def mem(self, start, end):
-        fd, path = tempfile.mkstemp(suffix=".bin")
-        os.close(fd)
-        os.unlink(path)
-        self._cmd(f'save "{path}" 0 {start:04x} {end:04x}', wait=0.2)
-        self._cmd("x")
-        for _ in range(50):
-            if os.path.exists(path) and os.path.getsize(path) >= end - start + 3:
-                break
-            time.sleep(0.05)
-        with open(path, "rb") as f:
-            data = f.read()[2:]
-        os.unlink(path)
-        return list(data[:end - start + 1])
+        """Read memory through the monitor's save command (retries while
+        VICE is still starting up)."""
+        for attempt in range(5):
+            fd, path = tempfile.mkstemp(suffix=".bin")
+            os.close(fd)
+            os.unlink(path)
+            self._cmd(f'save "{path}" 0 {start:04x} {end:04x}', wait=0.2)
+            self._cmd("x")
+            for _ in range(50):
+                if os.path.exists(path) and os.path.getsize(path) >= end - start + 3:
+                    break
+                time.sleep(0.05)
+            if os.path.exists(path):
+                with open(path, "rb") as f:
+                    data = f.read()[2:]
+                os.unlink(path)
+                return list(data[:end - start + 1])
+            time.sleep(1)
+        raise RuntimeError("VICE monitor did not save memory")
 
     def screen_lines(self):
         codes = self.mem(0x0400, 0x07e7)

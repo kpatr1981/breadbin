@@ -6,7 +6,7 @@ system: ps kill jobs free df uptime
         theme
 users:  login whoami passwd
 code:   basic as
-disks:  mount umount
+disks:  mount umount format
 shell:  a | b  > f  >> f  < f  cmd &
         a ; b  *.bas  cd  exit
 keys:   | is shift + -

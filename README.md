@@ -91,6 +91,7 @@ as /home/hello.s /home/hello ; /home/hello
 df ; free
 edit /home/notes            (^O saves, ^X quits)
 mount 9 /mnt ; ls /mnt      (needs a disk in drive 9)
+format 9 c64fs             (or: format 9 cbm name - erases drive 9)
 theme c64
 ```
 
@@ -100,7 +101,7 @@ On a C64 keyboard, `|` is **SHIFT + `-`**, and RUN/STOP interrupts the running c
 
 ## Commands
 
-`sh` `init` `login` `ls [-l] [-a]` `cat` `echo` `grep [-v] [-c]` `wc` `head [-n]` `more` `edit` `cp` `mv` `rm` `mkdir` `rmdir` `pwd` `stat` `hexdump` `ps` `kill [-sig]` `sleep` `free` `df` `mount` `umount` `uptime` `date` `uname [-a]` `version` `whoami` `passwd` `theme` `help` `clear` `count` `basic` `as`
+`sh` `init` `login` `ls [-l] [-a]` `cat` `echo` `grep [-v] [-c]` `wc` `head [-n]` `more` `edit` `cp` `mv` `rm` `mkdir` `rmdir` `pwd` `stat` `hexdump` `ps` `kill [-sig]` `sleep` `free` `df` `mount` `umount` `format` `uptime` `date` `uname [-a]` `version` `whoami` `passwd` `theme` `help` `clear` `count` `basic` `as`
 
 Shell built-ins: `cd`, `exit`, `kill`, `jobs`.
 
@@ -119,7 +120,7 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`.
 
 ## How it works
 
-- **Memory.** BASIC ROM is banked out. The kernel lives at `$8800–$CEFF`, and programs get 256-byte pages from `$0800–$87FF`.
+- **Memory.** BASIC ROM is banked out. The kernel lives at `$8000–$CEFF`, and programs get 256-byte pages from `$0800–$7FFF`.
 - **Context switch.** Each process has its own zero page `$02–$3F` and its slice of the stack page; both are saved and restored on every switch.
 - **Kernel preemption.** The kernel itself is not preemptible, so disk I/O is a critical section. The KERNAL's IEC routines are not re-entrant.
 - **Executables (CX format).** Each program is linked twice, at `$0000` and at `$0100`. The bytes that differ by one are high bytes of addresses, and their offsets become the relocation table. The loader adds the load page to each of them.

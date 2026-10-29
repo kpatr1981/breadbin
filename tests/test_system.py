@@ -335,6 +335,35 @@ class Drives(unittest.TestCase):
                               "cat", img9, "/x/f"], capture_output=True, text=True)
         self.assertEqual(out.stdout, "hi\n")
 
+    def test_format(self):
+        blank = os.path.join(ROOT, "build", "t_blank9.d64")
+        with open(blank, "wb") as f:
+            f.write(bytes(174848))
+        with Vice(IMAGE, extra=["-drive9type", "1541", "-9", blank]) as v:
+            v.wait_shell()
+            self.assertIn("no such device", v.run("mount 9 /mnt"))
+            self.assertIn("only drives 9, 10 and 11", v.run("format 8").replace("\n", " "))
+            v.type("clear\nformat 9 c64fs mydisk\n")
+            v.wait_for("(y/n)")
+            v.type("y\n")
+            v.wait_for("done", timeout=400)
+            v.run("mount 9 /mnt")
+            v.run("mkdir /mnt/src")
+            v.run("echo hello > /mnt/src/f")
+            self.assertEqual(v.run("cat /mnt/src/f"), "hello")
+            v.run("umount /mnt")
+            v.type("clear\nformat 9 cbm plain\n")
+            v.wait_for("(y/n)")
+            v.type("y\n")
+            v.wait_for("done", timeout=400)
+            v.run("mount 9 /mnt")
+            self.assertIn("(cbm dos)", v.run("mount"))
+            v.run("echo hi > /mnt/note")
+            v.run("umount /mnt")
+        d = c1541_dir(blank)
+        self.assertIn('"plain', d)
+        self.assertIn('"note"', d)
+
 
 if __name__ == "__main__":
     unittest.main()

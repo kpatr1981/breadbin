@@ -16,7 +16,7 @@
 
 .export cbm_iget, cbm_lookup, cbm_read, cbm_readdir, cbm_open_write
 .export cbm_write, cbm_wclose, cbm_scratch, cbm_rename, cbm_fsinfo
-.export sys_mount, sys_umount, sys_mntinfo
+.export sys_mount, sys_umount, sys_mntinfo, sys_diskio
 
 .segment "BSS"
 cb_t:    .res 1
@@ -806,6 +806,85 @@ sys_mount:
         lda #ENODEV
         sec
         rts
+
+; ---------------------------------------------------------------------
+; diskio(A = drive 9-11, X = op): raw access to an unmounted drive, for
+; /bin/format.  op 0: send the DOS command at r0 (NUL-terminated)
+;               op 1: write the 256 bytes at r0 to block r1
+;               op 2: read block r1 into the 256 bytes at r0
+sys_diskio:
+        stx mo_ent
+        sec
+        sbc #7
+        cmp #2
+        bcc @inval
+        cmp #NDEV
+        bcs @inval
+        sta mo_dev
+        tax
+        lda dev_present,x
+        beq @free
+        lda #EBUSY
+        sec
+        rts
+@inval: lda #EINVAL
+        sec
+        rts
+@free:  ldx mo_dev
+        jsr iec_open
+        bcs @r
+        lda mo_dev
+        jsr binval
+        lda mo_ent
+        beq @cmd
+        cmp #1
+        beq @wr
+        ; read
+        lda mo_dev
+        ldx r1
+        ldy r1+1
+        jsr bread
+        bcs @done
+        ldy #0
+@rl:    lda (bp),y
+        sta (r0),y
+        iny
+        bne @rl
+        clc
+        jmp @done
+@wr:    lda mo_dev
+        ldx r1
+        ldy r1+1
+        jsr bget_buf
+        stx cb_cnt
+        ldy #0
+@wl:    lda (r0),y
+        sta (bp),y
+        iny
+        bne @wl
+        ldx cb_cnt
+        jsr bwrite
+        jmp @done
+@cmd:   ldy #0
+@cl:    lda (r0),y
+        beq @ce
+        sta cmdbuf,y
+        iny
+        cpy #39
+        bne @cl
+@ce:    sty cmdlen
+        lda mo_dev
+        jsr iec_command
+@done:  php
+        ldx mo_dev
+        jsr iec_close
+        lda mo_dev
+        jsr binval
+        plp
+        bcc @r
+        lda #EIO
+@r:     rts
+.import bwrite
 
 ; ent_path: X = mount entry -> p1 = &mt_path[x*32]
 ent_path:

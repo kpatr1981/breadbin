@@ -41,7 +41,7 @@ dev_present: .res NDEV
 dev_type: .res NDEV
 cur_lcmd: .res 1
 cur_ldata: .res 1
-cmdbuf:  .res 20
+cmdbuf:  .res 40
 cmdlen:  .res 1
 reu_tmp: .res 1
 
