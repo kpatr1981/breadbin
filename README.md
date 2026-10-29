@@ -10,6 +10,8 @@ It is a real kernel, not a shell that prints canned output:
 - **A Unix filesystem on the 1541.** c64fs has inodes, real directories (`mkdir`, `cd`, `..`), files up to 35 KB, and `/dev/console` and `/dev/null` device nodes.
 - **Signals.** RUN/STOP sends `SIGINT` to the foreground job. `kill` sends any signal.
 - **REU support.** If a RAM Expansion Unit is present, it is detected at boot, formatted, and mounted at `/tmp` as a fast RAM disk.
+- **More drives.** `mount 9 /mnt` attaches drive 9, 10 or 11. A c64os disk shows up with its directories. A normal C64 disk shows up as one flat directory that you can read, write (`cp`), `rm` and `mv`; the writes go through the drive's own DOS, so other C64 software can read the results.
+- **Users and screen.** There's a `login` with passwords (`passwd`, `whoami`), a full-screen editor (`edit`), colour `theme`s, shell wildcards (`*.bas`) and `jobs`.
 - **Stock hardware.** It runs on a stock C64 with a 1541, and the same disk boots with or without an REU.
 - **BASIC and an assembler.** Both run *on* the C64: `basic` is an integer BASIC, and `as` is a 6502 assembler that produces new c64os commands.
 
@@ -19,6 +21,7 @@ It is a real kernel, not a shell that prints canned output:
 make            # needs cc65 (ca65/ld65/ar65), python3
 make run        # boots build/c64os.d64 in VICE (x64sc)
 make run-reu    # same, with a 512K REU (/tmp becomes a RAM disk)
+x64sc -drive9type 1541 -9 other.d64 -autostart build/c64os.d64   # with a drive 9
 ```
 
 Things to type at the `/ $` prompt:
@@ -33,15 +36,20 @@ kill 5                      (use the pid that ps shows)
 basic /home/hello.bas
 as /home/hello.s /home/hello ; /home/hello
 df ; free
+edit /home/notes            (^O saves, ^X quits)
+mount 9 /mnt ; ls /mnt      (needs a disk in drive 9)
+theme c64
 ```
+
+At the `login:` prompt, type `root` or `user`; neither has a password until you set one with `passwd`.
 
 On a C64 keyboard, `|` is **SHIFT + `-`**, and RUN/STOP interrupts the running command.
 
 ## Commands
 
-`sh` `init` `ls [-l] [-a]` `cat` `echo` `grep [-v] [-c]` `wc` `head [-n]` `more` `cp` `mv` `rm` `mkdir` `rmdir` `pwd` `ps` `kill [-sig]` `sleep` `free` `df` `uname [-a]` `clear` `count` `basic` `as`
+`sh` `init` `login` `ls [-l] [-a]` `cat` `echo` `grep [-v] [-c]` `wc` `head [-n]` `more` `edit` `cp` `mv` `rm` `mkdir` `rmdir` `pwd` `stat` `hexdump` `ps` `kill [-sig]` `sleep` `free` `df` `mount` `umount` `uptime` `date` `uname [-a]` `version` `whoami` `passwd` `theme` `help` `clear` `count` `basic` `as`
 
-Shell built-ins: `cd`, `exit`, `kill`.
+Shell built-ins: `cd`, `exit`, `kill`, `jobs`.
 
 ## Layout
 
@@ -58,7 +66,7 @@ Shell built-ins: `cd`, `exit`, `kill`.
 
 ## How it works
 
-- **Memory.** BASIC ROM is banked out. The kernel lives at `$9000–$CEFF`, and programs get 256-byte pages from `$0800–$8FFF`.
+- **Memory.** BASIC ROM is banked out. The kernel lives at `$8800–$CEFF`, and programs get 256-byte pages from `$0800–$87FF`.
 - **Context switch.** Each process has its own zero page `$02–$3F` and its slice of the stack page; both are saved and restored on every switch.
 - **Kernel preemption.** The kernel itself is not preemptible, so disk I/O is a critical section. The KERNAL's IEC routines are not re-entrant.
 - **Executables (CX format).** Each program is linked twice, at `$0000` and at `$0100`. The bytes that differ by one are high bytes of addresses, and their offsets become the relocation table. The loader adds the load page to each of them.

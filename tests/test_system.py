@@ -273,5 +273,65 @@ class REU(unittest.TestCase):
             self.assertIn("exists", v.run("mkdir /tmp/d"))
 
 
+def c1541_dir(img):
+    out = subprocess.run(["c1541", img, "-dir"], capture_output=True, text=True).stdout
+    return out
+
+
+class Drives(unittest.TestCase):
+    """mount: normal C64 disks and c64os disks on drive 9."""
+
+    def test_cbm_disk(self):
+        cbm = os.path.join(ROOT, "build", "t_cbm9.d64")
+        if os.path.exists(cbm):
+            os.unlink(cbm)
+        subprocess.run(["c1541", "-format", "cbmdisk,cb", "d64", cbm,
+                        "-write", os.path.join(ROOT, "rootfs", "etc", "motd"), "motd,s",
+                        "-write", os.path.join(ROOT, "rootfs", "home", "readme"), "readme,s"],
+                       capture_output=True, check=True)
+        with Vice(IMAGE, extra=["-drive9type", "1541", "-9", cbm]) as v:
+            v.wait_shell()
+            self.assertEqual(v.run("mount 9 /mnt"), "")
+            self.assertIn("drive 9 on /mnt (cbm dos)", v.run("mount"))
+            self.assertEqual(v.run("ls /mnt").split(), ["motd", "readme"])
+            self.assertIn("welcome to c64os.", v.run("cat /mnt/motd"))
+            v.run("cp /etc/help /mnt/help")
+            v.run("rm /mnt/motd")
+            v.run("mv /mnt/help /mnt/h2")
+            self.assertEqual(v.run("ls /mnt").split(), ["readme", "h2"])
+            self.assertIn("/mnt", v.run("df"))
+            self.assertIn("operation not permitted", v.run("mkdir /mnt/d"))
+            v.run("umount /mnt")
+        d = c1541_dir(cbm)
+        self.assertIn('"h2"', d)
+        self.assertNotIn('"motd"', d)
+        out = os.path.join(ROOT, "build", "t_h2.txt")
+        subprocess.run(["c1541", cbm, "-read", "h2,s", out], capture_output=True)
+        with open(out, "rb") as f, open(os.path.join(ROOT, "rootfs", "etc", "help"), "rb") as g:
+            self.assertEqual(f.read(), g.read())
+
+    def test_c64os_disk(self):
+        img9 = os.path.join(ROOT, "build", "t_c64fs9.d64")
+        with open(IMAGE, "rb") as f, open(img9, "wb") as g:
+            g.write(f.read())
+        with Vice(IMAGE, extra=["-drive9type", "1541", "-9", img9]) as v:
+            v.wait_shell()
+            v.run("mount 9 /mnt")
+            self.assertIn("drive 9 on /mnt (c64fs)", v.run("mount"))
+            v.run("mkdir /mnt/x")
+            v.run("echo hi > /mnt/x/f")
+            self.assertEqual(v.run("cat /mnt/x/f"), "hi")
+            self.assertEqual(v.run("/mnt/bin/echo from drive 9"), "from drive 9")
+            v.run("cd /mnt/x")
+            self.assertIn("device busy", v.run("umount /mnt"))
+            v.run("cd ../..")
+            self.assertEqual(v.run("pwd"), "/")
+            self.assertEqual(v.run("umount /mnt"), "")
+            self.assertIn("no such device", v.run("mount 10 /mnt"))
+        out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "mkimage.py"),
+                              "cat", img9, "/x/f"], capture_output=True, text=True)
+        self.assertEqual(out.stdout, "hi\n")
+
+
 if __name__ == "__main__":
     unittest.main()

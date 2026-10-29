@@ -15,17 +15,23 @@ pp:     .res 2          ; path pointer for namei
 
 .segment "BSS"
 ; per-device superblock info (dev 0 = disk, 1 = REU)
-sb_nblocks_lo: .res 2
-sb_nblocks_hi: .res 2
-sb_bitmap_lo:  .res 2
-sb_bitmap_hi:  .res 2
-sb_istart_lo:  .res 2
-sb_istart_hi:  .res 2
-sb_ninodes:    .res 2
-sb_ok:         .res 2
+sb_nblocks_lo: .res NDEV
+sb_nblocks_hi: .res NDEV
+sb_bitmap_lo:  .res NDEV
+sb_bitmap_hi:  .res NDEV
+sb_istart_lo:  .res NDEV
+sb_istart_hi:  .res NDEV
+sb_ninodes:    .res NDEV
+sb_ok:         .res NDEV
 sb_nblocks = sb_nblocks_lo
 mnt_active: .res 1
 mnt_ino:    .res 1      ; inode of /tmp on dev 0
+; mount table: (mt_pdev, mt_pino) is the mount point, mt_dev the device
+mt_used: .res NMNT
+mt_pdev: .res NMNT
+mt_pino: .res NMNT
+mt_dev:  .res NMNT
+mt_path: .res NMNT*32
 
 ci:      .res INO_SIZE  ; working inode
 ci_dev:  .res 1
@@ -59,12 +65,15 @@ ba_dev:  .res 1
 .export sb_ok, fs_name2, nm_dev, nm_ino, dl_off, dl_ino, f_done, dir_put
 .export bfree, mnt_active, mnt_ino, fs_count_inodes, sb_ninodes, ci_load_type
 .export inode_blk, s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi
+.export mt_used, mt_pdev, mt_pino, mt_dev, mt_path, mnt_point, mnt_of_dev, mount_dev
+.import cbm_iget, cbm_lookup
 
 .segment "RODATA"
 magic:  .byte "C64FS"
 s_dot:  .byte ".", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 s_dotdot: .byte "..", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 s_tmp:  .byte "tmp", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+s_tmpp: .byte "/tmp", 0
 
 .segment "CODE"
 ; ---------------------------------------------------------------------
@@ -97,10 +106,54 @@ fs_mount:
         jsr dir_lookup
         beq @ok
         sta mnt_ino
+        sta mt_pino
         lda #1
         sta mnt_active
+        sta mt_used
+        sta mt_dev
+        lda #0
+        sta mt_pdev
+        ldx #4
+@p:     lda s_tmpp,x
+        sta mt_path,x
+        dex
+        bpl @p
 @ok:    clc
 @r:     rts
+
+; mnt_point: A = dev, X = ino -> X = mount entry, carry clear if mounted on
+mnt_point:
+        sta tmp0
+        stx tmp1
+        ldx #NMNT-1
+@l:     lda mt_used,x
+        beq @n
+        lda mt_pdev,x
+        cmp tmp0
+        bne @n
+        lda mt_pino,x
+        cmp tmp1
+        beq @y
+@n:     dex
+        bpl @l
+        sec
+        rts
+@y:     clc
+        rts
+
+; mnt_of_dev: A = dev -> X = mount entry, carry clear if mounted
+mnt_of_dev:
+        ldx #NMNT-1
+@l:     ldy mt_used,x
+        beq @n
+        cmp mt_dev,x
+        beq @y
+@n:     dex
+        bpl @l
+        sec
+        rts
+@y:     clc
+        rts
 
 ; mount_dev: A = dev, X/Y = superblock block
 mount_dev:
@@ -165,6 +218,11 @@ inode_blk:
 iget:
         sta ci_dev
         stx ci_ino
+        tay
+        lda dev_type,y
+        beq @c64
+        jmp cbm_iget
+@c64:   lda ci_dev
         jsr inode_blk
         lda ci_dev
         ldx ib_lo
@@ -191,7 +249,12 @@ iget:
 
 ; iput: write ci back to its inode slot
 iput:
-        lda ci_dev
+        ldx ci_dev
+        lda dev_type,x
+        beq @c64
+        clc                 ; CBM disks have no inodes to write
+        rts
+@c64:   lda ci_dev
         ldx ci_ino
         jsr inode_blk
         lda ci_dev
@@ -810,7 +873,11 @@ fs_write:
 ; dir_lookup -> A = inode (Z set if not found); dl_off = entry offset,
 ; dl_free = first free entry offset ($ffff if none)
 dir_lookup:
-        lda #0
+        ldx ci_dev
+        lda dev_type,x
+        beq @c64
+        jmp cbm_lookup
+@c64:   lda #0
         sta dl_pos
         sta dl_pos+1
         sta bm_alloc
@@ -1077,7 +1144,7 @@ namei:
         lda #ENOTDIR
         sec
         rts
-@isdir: ; ".." from the root of the mounted fs goes back to dev 0
+@isdir: ; ".." from the root of a mounted fs goes to its mount point
         lda nm_dev
         beq @lk
         lda nm_ino
@@ -1091,10 +1158,15 @@ namei:
         bne @lk
         lda fs_name+2
         bne @lk
-        lda #0
+        lda nm_dev
+        jsr mnt_of_dev
+        bcs @lk
+        lda mt_pdev,x
         sta nm_dev
-        ldx mnt_ino
-        stx nm_ino
+        lda mt_pino,x
+        sta nm_ino
+        tax
+        lda nm_dev
         jsr iget
         bcs @r
 @lk:    jsr dir_lookup
@@ -1103,15 +1175,12 @@ namei:
         sec
 @r:     rts
 @found: sta nm_ino
-        ; crossing into the mount point?
+        ; crossing into a mount point?
         lda nm_dev
-        bne @nx
-        lda mnt_active
-        beq @nx
-        lda nm_ino
-        cmp mnt_ino
-        bne @nx
-        lda #1
+        ldx nm_ino
+        jsr mnt_point
+        bcs @nx
+        lda mt_dev,x
         sta nm_dev
         lda #ROOT_INO
         sta nm_ino

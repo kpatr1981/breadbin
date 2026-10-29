@@ -8,9 +8,23 @@
         lda #<p_root
         ldx #>p_root
         jsr one
-        lda #<p_tmp
-        ldx #>p_tmp
-        jmp one
+        lda #0
+        sta mi
+@m:     lda #<mbuf
+        sta r0
+        lda #>mbuf
+        sta r0+1
+        lda mi
+        jsr SYS_MNTINFO
+        bcs @n
+        lda #<(mbuf+2)
+        ldx #>(mbuf+2)
+        jsr one
+@n:     inc mi
+        lda mi
+        cmp #4
+        bne @m
+        rts
 one:    sta r0
         stx r0+1
         sta name
@@ -63,3 +77,5 @@ p_tmp:  .byte "/tmp", 0
 buf:  .res 8
 name: .res 2
 dev:  .res 1
+mi:   .res 1
+mbuf: .res 34

@@ -2,12 +2,10 @@
 ;
 ; dev 0: 1541 on IEC device 8, raw 256-byte sectors via "U1"/"U2"/"B-P"
 ; dev 1: REU RAM disk (block b = REU bank b>>8, page b&$ff)
+; dev 2-4: drives 9-11 (mounted with mount()), same sector commands
 ; Cache is write-through: bwrite writes the buffer to its device at once.
 .include "k.inc"
 
-LFN_CMD  = 15
-LFN_DATA = 2
-DRIVE    = 8
 
 REU_STATUS = $df00
 REU_CMD    = $df01
@@ -39,7 +37,10 @@ rq_hi:   .res 1
 trk:     .res 1
 sct:     .res 1
 reu_banks: .res 1
-dev_present: .res 2
+dev_present: .res NDEV
+dev_type: .res NDEV
+cur_lcmd: .res 1
+cur_ldata: .res 1
 cmdbuf:  .res 20
 cmdlen:  .res 1
 reu_tmp: .res 1
@@ -52,6 +53,9 @@ trk_lo: .lobytes 0,21,42,63,84,105,126,147,168,189,210,231,252,273,294,315,336,3
 trk_hi: .hibytes 0,21,42,63,84,105,126,147,168,189,210,231,252,273,294,315,336,357,376,395,414,433,452,471,490,508,526,544,562,580,598,615,632,649,666,683
 s_hash: .byte "#"
 s_init: .byte "i0"
+dev_drive: .byte 8, 0, 9, 10, 11
+dev_lcmd:  .byte 15, 0, 14, 13, 12
+dev_ldata: .byte 2, 0, 3, 4, 5
 
 .segment "CODE"
 blk_init:
@@ -60,30 +64,111 @@ blk_init:
 @l:     sta b_valid,x
         dex
         bpl @l
-        ; command channel
+        ldx #0
+        jsr iec_open
+        lda #1
+        sta dev_present
+        jmp reu_detect
+
+; iec_open: X = dev. Open the drive's command channel and a data channel
+; with a drive buffer. Carry set (A = ENODEV) if the drive is not there.
+iec_open:
+        stx tmp2
+        lda #0
+        sta ST
         lda #2
         ldx #<s_init
         ldy #>s_init
         jsr SETNAM
-        lda #LFN_CMD
-        ldx #DRIVE
+        ldx tmp2
+        lda dev_drive,x
+        tay
+        lda dev_lcmd,x
+        pha
+        tya
+        tax
+        pla
         ldy #15
         jsr SETLFS
         jsr OPEN
-        ; data channel with a drive buffer
+        bcs @nodev
+        lda ST
+        bmi @nodev
         lda #1
         ldx #<s_hash
         ldy #>s_hash
         jsr SETNAM
-        lda #LFN_DATA
-        ldx #DRIVE
+        ldx tmp2
+        lda dev_drive,x
+        tay
+        lda dev_ldata,x
+        pha
+        tya
+        tax
+        pla
         ldy #2
         jsr SETLFS
         jsr OPEN
+        bcs @nodev
+        lda ST
+        bmi @nodev
         jsr CLRCHN
-        lda #1
-        sta dev_present
-        jmp reu_detect
+        clc
+        rts
+@nodev: jsr CLRCHN
+        ldx tmp2
+        jsr iec_close
+        lda #ENODEV
+        sec
+        rts
+
+; iec_close: X = dev
+iec_close:
+        stx tmp2
+        lda dev_ldata,x
+        jsr CLOSE
+        ldx tmp2
+        lda dev_lcmd,x
+        jsr CLOSE
+        jmp CLRCHN
+
+; cur_dev_set: A = dev -> channels used by the IEC routines below
+cur_dev_set:
+        tax
+        lda dev_lcmd,x
+        sta cur_lcmd
+        lda dev_ldata,x
+        sta cur_ldata
+        rts
+
+; iec_command: A = dev, cmdbuf/cmdlen = command. Sends it and reads the
+; drive status; carry clear if it reports 00 or 01.
+iec_command:
+        jsr cur_dev_set
+        jsr cmd_send
+        bcs @r
+        jmp cmd_status
+@r:     rts
+.export cmdbuf, cmdlen, iec_status
+
+; iec_status: A = dev -> carry clear if the drive's status is 00 or 01
+iec_status:
+        jsr cur_dev_set
+        jmp cmd_status
+
+; ts_block: A = track, X = sector -> X/Y = linear block number
+ts_block:
+        stx tmp0
+        tay
+        dey
+        lda trk_lo,y
+        clc
+        adc tmp0
+        tax
+        lda trk_hi,y
+        adc #0
+        tay
+        rts
 
 ; buf_idx_ptr: X = buffer index -> bp. Preserves X.
 buf_idx_ptr:
@@ -103,7 +188,9 @@ bread:
         rts
 @miss:  jsr cache_victim
         lda rq_dev
-        bne @reu
+        cmp #1
+        beq @reu
+        jsr cur_dev_set
         jsr iec_read
         jmp @chk
 @reu:   jsr reu_read
@@ -148,7 +235,9 @@ bwrite:
         sta rq_hi
         jsr buf_idx_ptr
         lda rq_dev
-        bne @reu
+        cmp #1
+        beq @reu
+        jsr cur_dev_set
         jsr iec_write
         jmp @r
 @reu:   jsr reu_write
@@ -159,7 +248,20 @@ bwrite:
 bdirty = bwrite
 
 bflush_all:
+        rts
+
+; binval: A = dev. Forget its cached blocks (after the drive's own DOS
+; changed the disk behind our back).
 binval:
+        ldx #NBUF-1
+        sta tmp0
+@l:     lda b_dev,x
+        cmp tmp0
+        bne @n
+        lda #0
+        sta b_valid,x
+@n:     dex
+        bpl @l
         rts
 
 ; cache_find: A = dev, X/Y = block. Hit: carry clear, X = idx, bp set.
@@ -296,7 +398,7 @@ cmd_us:
 
 ; send cmdbuf to the command channel
 cmd_send:
-        ldx #LFN_CMD
+        ldx cur_lcmd
         jsr CHKOUT
         bcs @e
         ldy #0
@@ -314,7 +416,7 @@ cmd_send:
 
 ; read the drive's error channel: carry set unless "00"
 cmd_status:
-        ldx #LFN_CMD
+        ldx cur_lcmd
         jsr CHKIN
         jsr CHRIN
         sta tmp0
@@ -345,7 +447,7 @@ iec_read:
         bcs @e
         jsr cmd_status
         bcs @e
-        ldx #LFN_DATA
+        ldx cur_ldata
         jsr CHKIN
         bcs @e
         ldy #0
@@ -372,7 +474,7 @@ iec_write:
         sta cmdlen
         jsr cmd_send
         bcs @e
-        ldx #LFN_DATA
+        ldx cur_ldata
         jsr CHKOUT
         bcs @e
         ldy #0
@@ -476,5 +578,7 @@ reu_detect:
         beq @none
         lda #1
         sta dev_present+1
+        lda #FS_C64
+        sta dev_type+1
 @none:  rts
 pat:    .byte $5a, $a5, $3c, $c3

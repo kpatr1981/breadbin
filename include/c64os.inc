@@ -32,6 +32,9 @@ SYS_ISATTY   = SYS_BASE + 3*23
 SYS_CONMODE  = SYS_BASE + 3*24
 SYS_GETUID   = SYS_BASE + 3*25
 SYS_SETUID   = SYS_BASE + 3*26
+SYS_MOUNT    = SYS_BASE + 3*27
+SYS_UMOUNT   = SYS_BASE + 3*28
+SYS_MNTINFO  = SYS_BASE + 3*29
 
 ; argument registers (zero page, saved per process)
 r0 = $02
@@ -74,8 +77,10 @@ EBADF   = 9
 ECHILD  = 10
 EAGAIN  = 11
 ENOMEM  = 12
+EBUSY   = 16
 EEXIST  = 17
 EXDEV   = 18
+ENODEV  = 19
 ENOTDIR = 20
 EISDIR  = 21
 EINVAL  = 22

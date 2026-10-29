@@ -7,6 +7,11 @@ NFD     = 8         ; fds per process
 NFILE   = 24        ; system open-file table
 NPIPE   = 4
 NBUF    = 6         ; block cache buffers
+NDEV    = 5         ; 0 drive 8, 1 REU, 2-4 drives 9-11
+NMNT    = 4         ; mount table entries
+FS_C64  = 0
+FS_CBM  = 1
+FT_CBMW = 7         ; open-file type: write to a CBM DOS file
 ZPSAVE  = $3E       ; bytes $02-$3F saved per process
 STKSAVE = 130       ; max saved stack bytes per process
 SAVESZ  = ZPSAVE + STKSAVE   ; 192
@@ -105,6 +110,7 @@ ST     = $90
 .global page_alloc, page_free, mem_init, sys_meminfo, free_pages, total_pages
 ; blk.s
 .global blk_init, bread, bdirty, bflush_all, buf_ptr, reu_banks, dev_present
+.global iec_open, iec_close, ts_block, iec_command, cur_dev_set, dev_drive, dev_type
 .global bget_buf, binval
 ; fs.s
 .global fs_mount, iget, iput, ci, ci_dev, ci_ino, bmap, namei, nameiparent

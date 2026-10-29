@@ -387,8 +387,12 @@ errtab:
         .word e_again
         .byte ENOMEM
         .word e_nomem
+        .byte EBUSY
+        .word e_busy
         .byte EEXIST
         .word e_exist
+        .byte ENODEV
+        .word e_nodev
         .byte EXDEV
         .word e_xdev
         .byte ENOTDIR
@@ -421,6 +425,8 @@ e_child:  .byte "no child processes", 0
 e_again:  .byte "too many processes", 0
 e_nomem:  .byte "out of memory", 0
 e_exist:  .byte "file exists", 0
+e_busy:   .byte "device busy", 0
+e_nodev:  .byte "no such device or no disk", 0
 e_xdev:   .byte "cross-device link", 0
 e_notdir: .byte "not a directory", 0
 e_isdir:  .byte "is a directory", 0

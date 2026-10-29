@@ -38,7 +38,9 @@ rn_npi:  .res 1
 rn_ex:   .res 1
 pbuf:    .res CWDLEN+16
 pb_len:  .res 1
-.export pbuf
+.export pbuf, build_path
+.import cbm_read, cbm_readdir, cbm_open_write, cbm_write, cbm_wclose
+.import cbm_scratch, cbm_rename, cbm_fsinfo
 
 .segment "CODE"
 file_init:
@@ -98,7 +100,13 @@ oft_unref:
         lda f_type,x
         cmp #FT_PIPER
         beq @pr
-        cmp #FT_PIPEW
+        cmp #FT_CBMW
+        bne @npw
+        lda #FT_FREE
+        sta f_type,x
+        lda f_pipe,x
+        jmp cbm_wclose
+@npw:   cmp #FT_PIPEW
         bne @free
         ldy f_pipe,x
         lda pi_wr,y
@@ -219,7 +227,11 @@ sys_open:
 @create:
         jsr nameiparent
         bcs @err
-        lda nm_dev
+        ldx nm_dev
+        lda dev_type,x
+        beq @c64c
+        jmp cbm_create
+@c64c:  lda nm_dev
         sta of_dev
         lda nm_ino
         sta of_ino
@@ -245,7 +257,11 @@ sys_open:
         ldx nm_ino
         jsr iget
         bcs @err
-        jsr oft_alloc
+        ldx nm_dev
+        lda dev_type,x
+        beq @c64o
+        jmp cbm_open
+@c64o:  jsr oft_alloc
         bcs @err
         lda nm_dev
         sta f_dev,x
@@ -307,6 +323,86 @@ sys_isatty:
 @y:     clc
         rts
 
+; ---- open() on a CBM DOS disk ----
+; cbm_open: existing entry (ci loaded, fs_name = its name)
+cbm_open:
+        lda of_flags
+        and #O_APPEND
+        beq @na
+        lda #EINVAL
+        sec
+        rts
+@na:    lda ci+I_TYPE
+        cmp #T_DIR
+        beq @dir
+        lda of_flags
+        and #(O_WRONLY | O_RDWR)
+        bne cbm_create      ; writing replaces the file
+        jsr oft_alloc
+        bcs @r
+        lda #FT_FILE
+        sta f_type,x
+        lda ci+I_DIRECT
+        sta f_pos0,x        ; first track/sector, data from offset 2
+        lda ci+I_DIRECT+1
+        sta f_pos1,x
+        lda #2
+        sta f_pos2,x
+        jmp @fin
+@dir:   lda of_flags
+        and #(O_WRONLY | O_RDWR)
+        beq @rd
+        lda #EISDIR
+        sec
+@r:     rts
+@rd:    jsr oft_alloc
+        bcs @r
+        lda #FT_DIR
+        sta f_type,x
+        lda #18
+        sta f_pos0,x
+        lda #1
+        sta f_pos1,x
+        lda #0
+        sta f_pos2,x
+        sta f_pipe,x
+@fin:   lda nm_dev
+        sta f_dev,x
+        lda nm_ino
+        sta f_ino,x
+        lda of_flags
+        sta f_flags,x
+        jmp fd_install
+
+; cbm_create: new or replaced file, fs_name on device nm_dev
+cbm_create:
+        lda of_flags
+        and #O_APPEND
+        beq @na
+        lda #EINVAL
+        sec
+        rts
+@na:    lda nm_dev
+        jsr cbm_open_write
+        bcs @r
+        pha
+        jsr oft_alloc
+        pla
+        bcs @nofile
+        sta f_pipe,x
+        lda #FT_CBMW
+        sta f_type,x
+        lda nm_dev
+        sta f_dev,x
+        lda #O_WRONLY
+        sta f_flags,x
+        jmp fd_install
+@nofile:
+        jsr cbm_wclose
+        lda #EMFILE
+        sec
+@r:     rts
+
 ; close(A = fd)
 sys_close:
         jsr fd_slot
@@ -343,7 +439,8 @@ sys_read:
         bne @n1
         jmp con_read
 @n1:    cmp #FT_PIPER
-        beq pipe_read
+        bne *+5
+        jmp pipe_read
         cmp #FT_NULL
         bne @bad
         lda #0
@@ -354,7 +451,15 @@ sys_read:
 @bad:   lda #EBADF
         sec
         rts
-@file:  jsr file_setup
+@file:  ldy f_dev,x
+        lda dev_type,y
+        beq @c64r
+        lda f_type,x
+        cmp #FT_DIR
+        bne @cf
+        jmp cbm_readdir
+@cf:    jmp cbm_read
+@c64r:  jsr file_setup
         bcs @r
         jsr fs_read
         bcs @r
@@ -478,7 +583,10 @@ sys_write:
         jmp con_write
 @n1:    cmp #FT_PIPEW
         beq pipe_write
-        cmp #FT_NULL
+        cmp #FT_CBMW
+        bne @n2
+        jmp cbm_write
+@n2:    cmp #FT_NULL
         bne @bad
         clc
 @r:     rts
@@ -717,10 +825,23 @@ set_name_dotdot:
         bpl @l
         rts
 
+; not_cbm: carry set (A = EPERM) if nm_dev is a flat CBM disk
+not_cbm:
+        ldx nm_dev
+        lda dev_type,x
+        beq @ok
+        lda #EPERM
+        sec
+        rts
+@ok:    clc
+        rts
+
 ; mkdir(r0 = path)
 sys_mkdir:
         jsr set_pp_r0
         jsr nameiparent
+        bcs @r
+        jsr not_cbm
         bcs @r
         jsr dir_lookup
         beq @new
@@ -763,6 +884,8 @@ sys_rmdir:
         jsr set_pp_r0
         jsr nameiparent
         bcs @r
+        jsr not_cbm
+        bcs @r
         jsr is_dot
         bne @nd
         lda #EINVAL
@@ -779,13 +902,11 @@ sys_rmdir:
         rts
 @f:     sta rn_ino
         lda of_dev
-        bne @nm
-        lda mnt_active
-        beq @nm
-        lda rn_ino
-        cmp mnt_ino
-        bne @nm
-        lda #EPERM
+        ldx rn_ino
+        .import mnt_point
+        jsr mnt_point
+        bcs @nm
+        lda #EBUSY
         sec
         rts
 @nm:    lda of_dev
@@ -833,7 +954,12 @@ sys_unlink:
         sec
 @r:     rts
 @f:     sta rn_ino
+        ldx of_dev
+        lda dev_type,x
+        beq @c64u
         lda of_dev
+        jmp cbm_scratch
+@c64u:  lda of_dev
         ldx rn_ino
         jsr iget
         bcs @r
@@ -905,7 +1031,12 @@ sys_rename:
         sec
         rts
 @samedev:
-        lda nm_ino
+        ldx rn_od
+        lda dev_type,x
+        beq @c64n
+        lda rn_od
+        jmp cbm_rename      ; fs_name2 = old, fs_name = new
+@c64n:  lda nm_ino
         sta rn_npi
         jsr dir_lookup
         beq @add
@@ -1195,7 +1326,35 @@ sys_fsinfo:
         jsr set_pp_r0
         jsr namei
         bcs @r
+        ldx nm_dev
+        lda dev_type,x
+        beq @c64
         lda nm_dev
+        jsr cbm_fsinfo
+        bcs @r
+        tya
+        ldy #1
+        sta (r1),y
+        txa
+        dey
+        sta (r1),y
+        ldy #2
+        lda #<664
+        sta (r1),y
+        iny
+        lda #>664
+        sta (r1),y
+        iny
+        lda #0
+        sta (r1),y
+        iny
+        sta (r1),y
+        iny
+        lda nm_dev
+        sta (r1),y
+        clc
+        rts
+@c64:   lda nm_dev
         jsr fs_count_free
         bcs @r
         tya

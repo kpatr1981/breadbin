@@ -21,7 +21,7 @@ esc_st:  .res 1         ; escape sequence state
 esc_row: .res 1
 con_raw: .res 1         ; 1 = raw keys (no echo, no line editing)
 raw_pid: .res 1
-.export con_raw, raw_pid
+.export con_raw, raw_pid, to_ascii, to_petscii
 dec_buf: .res 6
 
 .segment "CODE"

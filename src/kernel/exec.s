@@ -103,7 +103,13 @@ spawn_common:
         sta pp+1
         jsr namei
         bcs @r
-        lda nm_dev
+        ldx nm_dev
+        lda dev_type,x      ; programs only run from c64fs
+        beq @c64
+        lda #ENOEXEC
+        sec
+        rts
+@c64:   lda nm_dev
         ldx nm_ino
         jsr iget
         bcs @r

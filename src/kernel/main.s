@@ -94,20 +94,30 @@ kmain:
         lda #0
         sta $d020
         sta $d021
-        ; clear kernel BSS
+        ; clear kernel BSS (exactly: the jump table sits right after it)
         lda #<__BSS_RUN__
         sta p1
         lda #>__BSS_RUN__
         sta p1+1
-        ldx #>(__BSS_SIZE__ + 255)
-        lda #0
-        tay
-@z:     sta (p1),y
-        iny
-        bne @z
+        lda #<__BSS_SIZE__
+        sta p2
+        lda #>__BSS_SIZE__
+        sta p2+1
+        ldy #0
+@z:     lda p2
+        ora p2+1
+        beq @zd
+        tya
+        sta (p1),y
+        inc p1
+        bne @zn
         inc p1+1
-        dex
-        bne @z
+@zn:    lda p2
+        bne @zl
+        dec p2+1
+@zl:    dec p2
+        jmp @z
+@zd:    lda #0
         ldx #$1f
 @zz:    sta $40,x
         dex
