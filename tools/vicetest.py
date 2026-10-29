@@ -157,7 +157,13 @@ class Vice:
         command and the next prompt). Commands must fit on one screen line."""
         if clear:
             self.type("clear\n")
-            self._wait(lambda ls: self.PROMPT.match(ls[0]) and not any(ls[1:]), timeout)
+            # job notices ("[5] done") may print above the prompt
+            def cleared(ls):
+                body = [l for l in ls if l]
+                return (bool(body) and self.PROMPT.match(body[-1]) is not None
+                        and all(re.match(r"^\[\d+\] done$", l) for l in body[:-1])
+                        and not any(ls[ls.index(body[-1]) + 1:]))
+            self._wait(cleared, timeout)
         self.type(command + "\n")
         want = "$ " + command.strip()
         result = []
