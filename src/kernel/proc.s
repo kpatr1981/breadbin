@@ -21,6 +21,9 @@ p_sig:    .res MAXPROC
 p_exit:   .res MAXPROC
 p_cwdino: .res MAXPROC
 p_cwddev: .res MAXPROC
+p_wk0:    .res MAXPROC      ; sleep deadline (jiffies)
+p_wk1:    .res MAXPROC
+p_wk2:    .res MAXPROC
 p_name:   .res MAXPROC*NAMELEN
 p_fd:     .res MAXPROC*NFD
 p_cwd:    .res MAXPROC*CWDLEN
@@ -205,6 +208,8 @@ check_signal:
 
 ; wakeup: A = channel. Make every process blocked on it ready.
 wakeup:
+        php
+        sei                 ; the IRQ calls wakeup too: keep wk_ch ours
         sta wk_ch
         ldx #MAXPROC-1
 @l:     lda p_state,x
@@ -217,6 +222,7 @@ wakeup:
         sta p_state,x
 @n:     dex
         bpl @l
+        plp
         rts
 
 ; ---------------------------------------------------------------------
@@ -233,6 +239,25 @@ irq:
 @t:     jsr con_cursor_tick
         lda #CH_TICK
         jsr wakeup
+        ; wake sleepers whose deadline has passed
+        ldx #MAXPROC-1
+@sl:    lda p_state,x
+        cmp #PS_BLOCKED
+        bne @sn
+        lda p_chan,x
+        cmp #CH_SLEEP
+        bne @sn
+        lda ticks
+        cmp p_wk0,x
+        lda ticks+1
+        sbc p_wk1,x
+        lda ticks+2
+        sbc p_wk2,x
+        bcc @sn
+        lda #PS_READY
+        sta p_state,x
+@sn:    dex
+        bpl @sl
         ; RUN/STOP in the keyboard buffer -> SIGINT (and drop the key)
         ldx $c6
         beq @nokb
@@ -479,27 +504,29 @@ sys_yield:
 
 ; sleep(A/X = jiffies)
 sys_sleep:
+        ldy cur
         sei
         clc
         adc ticks
-        sta sb0
+        sta p_wk0,y
         txa
         adc ticks+1
-        sta sb1
+        sta p_wk1,y
         lda ticks+2
         adc #0
-        sta sb2
+        sta p_wk2,y
         cli
-@l:     sei
+@l:     ldy cur
+        sei
         lda ticks
-        cmp sb0
+        cmp p_wk0,y
         lda ticks+1
-        sbc sb1
+        sbc p_wk1,y
         lda ticks+2
-        sbc sb2
+        sbc p_wk2,y
         cli
         bcs @done
-        lda #CH_TICK
+        lda #CH_SLEEP
         jsr block_on
         jmp @l
 @done:  clc

@@ -15,6 +15,7 @@ cur_vis: .res 1         ; cursor currently drawn
 cur_on:  .res 1         ; reader waiting: blink cursor
 cur_t:   .res 1
 cur_save: .res 1
+con_busy: .res 1        ; output in progress: the IRQ must not blink
 con_eof: .res 1
 dec_buf: .res 6
 
@@ -71,6 +72,8 @@ cursor_show:
 
 ; called from IRQ every tick
 con_cursor_tick:
+        lda con_busy
+        bne @r
         lda cur_on
         beq @r
         dec cur_t
@@ -91,13 +94,18 @@ con_putc:
         pha
         tya
         pha
+        php
+        sei
+        inc con_busy
         jsr cursor_hide
+        plp
         tsx
         lda $0103,x
         jsr to_petscii
         beq @skip
         jsr CHROUT
-@skip:  pla
+@skip:  dec con_busy
+        pla
         tay
         pla
         tax
@@ -291,9 +299,12 @@ con_read:
         jsr block_on
         jmp @wait
 @key:   pha
+        php
+        sei
         lda #0
         sta cur_on
         jsr cursor_hide
+        plp
         pla
         cmp #$0d
         beq @ret

@@ -49,7 +49,7 @@ slot = $23
         jsr newline
 @n:     inc slot
         lda slot
-        cmp #8
+        cmp #16
         bne @l
         rts
 .segment "RODATA"

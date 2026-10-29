@@ -153,6 +153,29 @@ class Boot(unittest.TestCase):
         self.assertEqual(self.run_("echo 'print 6*7' | basic"), "42")
         self.assertIn("division by zero", self.run_("echo 'print 1/0' | basic"))
 
+    def test_19_assembler(self):
+        out = self.run_("as /home/hello.s /home/hello")
+        self.assertIn("bytes", out)
+        self.assertEqual(self.run_("/home/hello"), "hello, world! (assembled on a c64)")
+
+    def test_20_more_pages(self):
+        self.v.type("clear\n")
+        self.v.wait_for("$")
+        self.v.type("ls -l /bin | more\n")
+        s = self.v.wait_for("--more--")
+        self.assertIn("basic", s)
+        self.v.type("q\n")
+        self.v._wait(lambda ls: ls[-1].endswith(" $") or any(
+            l.endswith(" $") for l in ls[-3:]), 60)
+
+    def test_21_many_sleepers_stay_responsive(self):
+        pids = [self.run_("sleep 9999 &").strip("[]") for _ in range(6)]
+        import time
+        t = time.time()
+        self.assertEqual(self.run_("echo quick"), "quick")
+        self.assertLess(time.time() - t, 30)
+        self.v.run("kill " + " ".join(pids), clear=False)
+
 
 class Persistence(unittest.TestCase):
     """Files written by c64os survive a reboot and are readable on the host."""

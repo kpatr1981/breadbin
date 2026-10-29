@@ -21,7 +21,8 @@ PS_BLOCKED = 2
 PS_ZOMBIE  = 3
 
 ; wait channels
-CH_TICK  = $01
+CH_TICK  = $01      ; woken every tick (console polling)
+CH_SLEEP = $02      ; woken when ticks reach p_wk (sleep)
 CH_CHILD = $80      ; | parent slot
 CH_PIPE  = $40      ; | pipe index
 
