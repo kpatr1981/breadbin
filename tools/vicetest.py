@@ -57,6 +57,11 @@ class Vice:
             args.append("-warp")
         if reu:
             args += ["-reu", "-reusize", "512"]
+        roms = os.environ.get("OPENROMS")   # directory with the MEGA65 Open ROMs
+        if roms:
+            args += ["-kernal", os.path.join(roms, "kernal_generic.rom"),
+                     "-basic", os.path.join(roms, "basic_generic.rom"),
+                     "-chargen", os.path.join(roms, "chargen_openroms.rom")]
         args += list(extra)
         args += ["-autostart", image]
         self.log = tempfile.NamedTemporaryFile(prefix="vice", suffix=".log", delete=False)
