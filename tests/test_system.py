@@ -31,7 +31,7 @@ class Boot(unittest.TestCase):
 
     def test_01_banner(self):
         s = self.v.screen()
-        self.assertIn("breadbin 0.2", s)
+        self.assertIn("breadbin 0.3", s)
         self.assertIn("kpatronas@gmail.com", s)
 
     def test_02_echo(self):
@@ -183,7 +183,7 @@ class Boot(unittest.TestCase):
         self.assertTrue(self.run_("uptime").startswith("up "))
         self.run_("date 13:45:10")
         self.assertTrue(self.run_("date").startswith("13:4"))
-        self.assertEqual(self.run_("version"), "breadbin 0.2 by kpatronas@gmail.com")
+        self.assertEqual(self.run_("version"), "breadbin 0.3 by kpatronas@gmail.com")
         size = os.path.getsize(os.path.join(ROOT, "rootfs", "etc", "motd"))
         self.assertIn("size: %d" % size, self.run_("stat /etc/motd"))
         self.assertIn("0000: 77 65 6c 63", self.run_("hexdump /etc/motd | head -1"))
@@ -238,6 +238,47 @@ class Boot(unittest.TestCase):
         self.assertEqual(self.run_("whoami"), "root")
         self.assertIn("root:", self.run_("cat /etc/passwd"))
 
+    def ctrl_z(self):
+        self.v._cmd("keybuf \\x1a")
+        self.v._cmd("x")
+
+    def test_26_job_control(self):
+        # CTRL-Z stops the foreground job, fg brings it back, bg resumes it
+        self.v.type("clear\n")
+        self.v.wait_for("$")
+        self.v.type("count > /dev/null\n")
+        self.v.wait_for("$ count")
+        import time
+        time.sleep(2)
+        self.ctrl_z()
+        s = self.v.wait_for("] stopped")
+        pid = s.split("] stopped")[0].split("[")[-1]
+        self.assertIn("T&", next(l for l in self.run_("ps aux").splitlines()
+                                 if l.endswith("count")))
+        self.assertIn("[" + pid + "] stopped  count", self.run_("jobs"))
+        self.v.type("clear\nfg\n")
+        self.v.wait_for("$ fg")
+        time.sleep(2)
+        self.ctrl_z()
+        self.v.wait_for("] stopped")
+        self.assertEqual(self.run_("bg"), "[" + pid + "] running")
+        self.assertIn(" s&", next(l for l in self.run_("ps").splitlines()
+                                  if l.endswith("count")))
+        # a background job that reads the console stops instead of
+        # stealing the shell's keys
+        cat = self.run_("cat &").strip("[]")
+        time.sleep(2)
+        self.assertIn("[" + cat + "] stopped  cat", self.run_("jobs"))
+        self.run_("kill " + pid + " " + cat)
+        self.assertNotIn("count", self.run_("ps"))
+        self.assertIn("no such job", self.run_("fg 99"))
+
+    def test_27_date(self):
+        for t in ("00:00:00", "12:00:00", "23:59:59"):
+            self.assertEqual(self.run_("date " + t), t)
+        self.run_("date 11:59:59")
+        self.assertTrue(self.run_("date").startswith("12:0"))
+
 
 class Persistence(unittest.TestCase):
     """Files written by Breadbin survive a reboot and are readable on the host."""
@@ -274,6 +315,21 @@ class REU(unittest.TestCase):
             self.assertEqual(v.run("pwd"), "/")
             self.assertIn("home", v.run("ls /tmp/..").split())
             self.assertIn("exists", v.run("mkdir /tmp/d"))
+
+
+class GeoRAM(unittest.TestCase):
+    """With a GeoRAM (and no REU): /tmp is a RAM disk too."""
+
+    def test_georam_ramdisk(self):
+        with Vice(IMAGE, extra=["-georam", "-georamsize", "512"]) as v:
+            v.wait_shell()
+            self.assertIn("georam: 8 x 64k", v.screen())
+            self.assertIn("georam:    512", v.run("free"))
+            v.run("cp /home/readme /tmp/r")
+            self.assertEqual(v.run("wc /tmp/r"), v.run("wc /home/readme").replace("/home/readme", "/tmp/r"))
+            v.run("mkdir /tmp/d")
+            v.run("echo hi > /tmp/d/x")
+            self.assertEqual(v.run("cat /tmp/d/x"), "hi")
 
 
 def c1541_dir(img):
