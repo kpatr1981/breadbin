@@ -36,6 +36,7 @@ SYS_MOUNT    = SYS_BASE + 3*27
 SYS_UMOUNT   = SYS_BASE + 3*28
 SYS_MNTINFO  = SYS_BASE + 3*29
 SYS_DISKIO   = SYS_BASE + 3*30
+SYS_FG       = SYS_BASE + 3*31
 
 ; argument registers (zero page, saved per process)
 r0 = $02
@@ -60,7 +61,9 @@ SP_BG     = $01
 SP_IGNINT = $02
 
 ; wait flags (X)
-W_NOHANG = $01
+W_NOHANG   = $01
+W_UNTRACED = $02     ; also report children that stopped (X = WSTOPPED)
+WSTOPPED   = $80 | 20
 
 ; stat buffer: type, nlink, size(3), ino, dev, 0
 T_FILE = 1
@@ -113,3 +116,6 @@ SIGINT  = 2
 SIGKILL = 9
 SIGPIPE = 13
 SIGTERM = 15
+SIGCONT = 18
+SIGSTOP = 19
+SIGTSTP = 20

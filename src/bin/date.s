@@ -49,20 +49,31 @@ TOD_H  = $dc0b
         bne @h
         lda #$12            ; 00 -> 12 am
 @h:     cld
-        sta TOD_H           ; writing hours stops the clock
+        tax                 ; the CIA flips AM/PM when 12 is written:
+        and #$7f            ; write 12 with the flag inverted
+        eor #$12
+        bne @w
+        txa
+        eor #$80
+        tax
+@w:     sei                 ; the IRQ may be ticking the clock (DC-powered C64)
+        stx TOD_H           ; writing hours stops the clock
         lda mm
         sta TOD_M
         lda ss
         sta TOD_S
         lda #0
         sta TOD_10          ; writing tenths starts it
-show:   lda TOD_H           ; reading hours latches the clock
+        cli
+show:   sei
+        lda TOD_H           ; reading hours latches the clock
         sta hh
         lda TOD_M
         sta mm
         lda TOD_S
         sta ss
         lda TOD_10          ; unlatch
+        cli
         ; 12h + PM -> 24h
         lda hh
         and #$7f

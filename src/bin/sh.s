@@ -6,7 +6,8 @@
 ;   cmd &                  background job
 ;   a ; b                  sequence
 ;   "quoted words", # comments
-; Built-ins: cd, exit, kill (also /bin/kill), jobs. `sh file` runs a script.
+; Built-ins: cd, exit, kill (also /bin/kill), jobs, fg, bg. `sh file` runs a
+; script. CTRL-Z stops the foreground job; fg/bg [pid] continue it.
 ; Words with * or ? are expanded against the directory they name.
 .include "../../include/breadbin.inc"
 .import print, eprint, putc, newline, print_dec, perr, argn, strlen, exit, parse_dec
@@ -60,7 +61,8 @@ qch:     .res 1
 bk_sig:  .res 1
 bk_i:    .res 1
 bk_p:    .res 2
-pinfo:   .res 16
+pinfo:   .res 17
+lastjob: .res 1         ; pid that fg/bg act on by default
 g_tok:   .res 1
 g_word:  .res 2
 g_d:     .res 1
@@ -79,6 +81,7 @@ tpos:    .res 1
 .segment "CODE"
 start:
         lda #0
+        sta lastjob
         sta in_fd
         sta ipos
         sta ilen
@@ -551,6 +554,7 @@ stage:  lda #0
         jsr putc
         ldx npids
         lda pids-1,x
+        sta lastjob
         ldx #0
         jsr print_dec
         lda #']'
@@ -559,13 +563,35 @@ stage:  lda #0
 @wl:    ldx #0
 @w:     stx tmpb
         lda pids,x
-        ldx #0
-        jsr SYS_WAIT
+        jsr fgwait
+        bcs @r              ; stopped: the rest of the pipeline is too
         ldx tmpb
         inx
         cpx npids
         bne @w
 @r:     rts
+
+; fgwait: wait for foreground pid A; carry set if it stopped instead
+fgwait: ldx #W_UNTRACED
+        jsr SYS_WAIT
+        bcs @ok
+        cpx #WSTOPPED
+        bne @ok
+        sta lastjob
+        jsr newline
+        lda #'['
+        jsr putc
+        lda lastjob
+        ldx #0
+        jsr print_dec
+        lda #<s_stopped
+        ldx #>s_stopped
+        jsr print
+        jsr newline
+        sec
+        rts
+@ok:    clc
+        rts
 
 ; add_arg: av[nargs++] = zp1 (silently ignored when full)
 add_arg:
@@ -920,6 +946,22 @@ builtin:
         bne @nojobs
         jmp bi_jobs
 @nojobs:
+        lda #<s_fg
+        sta lp2
+        lda #>s_fg
+        sta lp2+1
+        jsr strcmp_
+        bne @nofg
+        jmp bi_fg
+@nofg:
+        lda #<s_bg
+        sta lp2
+        lda #>s_bg
+        sta lp2+1
+        jsr strcmp_
+        bne @nobg
+        jmp bi_bg
+@nobg:
         lda #<s_exit
         sta lp2
         lda #>s_exit
@@ -981,6 +1023,68 @@ bi_kill:
 @done:  sec
         rts
 
+; fg [pid]: bring a stopped or background job to the foreground
+bi_fg:  jsr job_arg
+        bcs @r
+        jsr SYS_FG
+        bcs job_err
+        lda bk_p
+        jsr fgwait
+@r:     sec
+        rts
+
+; bg [pid]: let a stopped job go on running in the background
+bi_bg:  jsr job_arg
+        bcs @r
+        ldx #SIGCONT
+        jsr SYS_KILL
+        bcs job_err
+        lda #'['
+        jsr putc
+        lda bk_p
+        ldx #0
+        jsr print_dec
+        lda #<s_run
+        ldx #>s_run
+        jsr print
+        jsr newline
+@r:     sec
+        rts
+
+; job_err: A = errno from fg/bg; a pid that isn't running is "no such job"
+job_err:
+        cmp #ESRCH
+        beq job_none
+        ldx av
+        ldy av+1
+        jsr perr
+        sec
+        rts
+
+; job_arg: A = bk_p = pid from av[1], or lastjob; carry set (after a
+; message) if there is none
+job_arg:
+        lda nargs
+        cmp #2
+        bcc @last
+        lda av+2
+        ldx av+3
+        jsr parse_dec
+        bcs @none
+        bcc @ok
+@last:  lda lastjob
+        beq @none
+@ok:    sta bk_p
+        clc
+        rts
+@none:
+job_none:
+        lda #<s_nojob
+        ldx #>s_nojob
+        jsr eprint
+        sec
+        rts
+
 ; jobs: background children of this shell (from the process table)
 bi_jobs:
         jsr SYS_GETPID
@@ -1007,7 +1111,12 @@ bi_jobs:
         jsr print_dec
         lda #<s_run
         ldx #>s_run
-        jsr print
+        ldy pinfo+2
+        cpy #4              ; stopped
+        bne @st
+        lda #<s_stopped
+        ldx #>s_stopped
+@st:    jsr print
         lda #<(pinfo+5)
         ldx #>(pinfo+5)
         jsr print
@@ -1041,4 +1150,8 @@ s_exit:    .byte "exit", 0
 s_kill:    .byte "kill", 0
 s_jobs:    .byte "jobs", 0
 s_run:     .byte "] running  ", 0
+s_stopped: .byte "] stopped  ", 0
+s_fg:      .byte "fg", 0
+s_bg:      .byte "bg", 0
+s_nojob:   .byte "no such job", 10, 0
 s_root:    .byte "/", 0

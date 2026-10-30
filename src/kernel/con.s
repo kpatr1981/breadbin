@@ -22,6 +22,7 @@ esc_row: .res 1
 con_raw: .res 1         ; 1 = raw keys (no echo, no line editing)
 raw_pid: .res 1
 .export con_raw, raw_pid, to_ascii, to_petscii
+.import sigint_fg, sigtstp_fg
 dec_buf: .res 6
 
 .segment "CODE"
@@ -321,6 +322,8 @@ to_ascii:
         bcc @up
         cmp #$dd
         beq @bar
+        cmp #$a9            ; shift+pound: where emulators put a PC's '|'
+        beq @bar
         cmp #$c1
         bcc @none
         cmp #$db
@@ -432,6 +435,7 @@ con_write:
 ; con_read: cooked read of up to r1 bytes into (r0). Blocks until a line
 ; is complete (or CTRL-D on an empty line = EOF). Returns r1 = count.
 con_read:
+        jsr bg_stop
         lda con_raw
         beq @wait
         jmp raw_read
@@ -442,7 +446,7 @@ con_read:
         bne @key
         lda #1
         sta cur_on
-        lda #CH_TICK
+        lda #CH_KEY
         jsr block_on
         jmp @wait
 @key:   pha
@@ -453,6 +457,8 @@ con_read:
         jsr cursor_hide
         plp
         pla
+        jsr intr_key
+        beq @wait
         cmp #$0d
         beq @ret
         cmp #$14
@@ -515,6 +521,42 @@ con_read:
 @r:     clc
         rts
 
+; intr_key: A = key from GETIN. RUN/STOP ($03), or CTRL-Z ($1a) when not in
+; raw mode, normally never gets here: the IRQ takes it out of the keyboard
+; buffer. But when it isn't the last key in the buffer, the reader gets it
+; first; then signal the foreground job here. Z set if the key was used.
+intr_key:
+        cmp #$03
+        beq @int
+        cmp #$1a
+        bne @r
+        ldx con_raw
+        bne @r              ; raw: CTRL-Z is an ordinary key (Z clear)
+        php
+        sei
+        jsr sigtstp_fg
+        jmp @used
+@int:   php
+        sei
+        jsr sigint_fg
+@used:  plp
+        lda #0
+@r:     rts
+
+; bg_stop: a background job that reads the console stops (like SIGTTIN in
+; Unix) until fg brings it to the foreground
+bg_stop:
+        ldx cur
+        lda p_flags,x
+        and #SP_BG
+        beq @r
+        lda p_flags,x
+        ora #PF_STOP
+        sta p_flags,x
+        jsr check_signal
+        jmp bg_stop
+@r:     rts
+
 ; raw_read: one key, no echo. Cursor keys come as control codes:
 ;   up ^P($10) down ^N($0e) left ^B($02) right ^F($06) home ^A($01)
 ;   clr ^L($0c) del ^H($08) return $0a; F1-F8 as $85-$8c; ctrl-letters $01-$1a
@@ -524,7 +566,7 @@ raw_read:
         bne @k
         lda #1
         sta cur_on
-        lda #CH_TICK
+        lda #CH_KEY
         jsr block_on
         jmp @w
 @k:     pha
@@ -535,6 +577,8 @@ raw_read:
         jsr cursor_hide
         plp
         pla
+        jsr intr_key
+        beq @w
         ldx #rawmap_n-1
 @m:     cmp rawmap_in,x
         beq @hit

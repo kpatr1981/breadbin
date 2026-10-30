@@ -552,19 +552,18 @@ cbm_open_write:
         lda #>s_w1
         sta p1+1
         jsr cmd_str
-        lda cmdlen
-        ldx #<cmdbuf
-        ldy #>cmdbuf
-        jsr SETNAM
-        ldx mo_dev
+        ldx mo_dev          ; open it on channel 3
         lda dev_drive,x
-        tax
-        lda mo_dev
-        clc
-        adc #20             ; logical file 20+dev, secondary address 3
-        ldy #3
-        jsr SETLFS
-        jsr OPEN
+        ldy #$f0+3
+        jsr ieclisten
+        bcs @err
+        ldy #0
+@n:     lda cmdbuf,y
+        jsr iecout
+        iny
+        cpy cmdlen
+        bne @n
+        jsr iecunlisten
         bcs @err
         lda mo_dev
         .import iec_status
@@ -575,15 +574,12 @@ cbm_open_write:
         sta w_busy,x
         lda mo_dev
         clc
-        adc #20
+        adc #20             ; the open file's handle: 20+dev
         clc
         rts
 @err2:  lda mo_dev
-        clc
-        adc #20
-        jsr CLOSE
-@err:   jsr CLRCHN
-        lda mo_dev
+        jsr ch3_close
+@err:   lda mo_dev
         jsr binval
         lda #EIO
         sec
@@ -593,8 +589,12 @@ cbm_open_write:
 cbm_write:
         ldx sb6
         lda f_pipe,x
+        sec
+        sbc #20
         tax
-        jsr CHKOUT
+        lda dev_drive,x
+        ldy #$60+3
+        jsr ieclisten
         bcs @e
         lda r0
         sta p1
@@ -609,7 +609,7 @@ cbm_write:
         beq @d
         ldy #0
         lda (p1),y
-        jsr CHROUT
+        jsr iecout
         inc p1
         bne @c
         inc p1+1
@@ -618,27 +618,35 @@ cbm_write:
         dec cb_n+1
 @dl:    dec cb_n
         jmp @l
-@d:     jsr CLRCHN
-        clc
+@d:     jsr iecunlisten
+        bcs @e
         rts
-@e:     jsr CLRCHN
-        lda #EIO
+@e:     lda #EIO
         sec
         rts
 
-; cbm_wclose: A = lfn (20+dev). Finish the DOS file.
+; cbm_wclose: A = handle (20+dev). Finish the DOS file.
 cbm_wclose:
-        pha
-        jsr CLOSE
-        jsr CLRCHN
-        pla
         sec
         sbc #20
+        pha
+        jsr ch3_close
+        pla
         tax
         lda #0
         sta w_busy,x
         txa
         jmp binval
+
+; ch3_close: A = dev. Close DOS channel 3 (the file being written).
+ch3_close:
+        tax
+        lda dev_drive,x
+        ldy #$e0+3
+        jsr ieclisten
+        bcs @r
+        jmp iecunlisten
+@r:     rts
 
 ; cbm_fsinfo: A = dev -> X/Y = free blocks (from the BAM)
 cbm_fsinfo:

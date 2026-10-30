@@ -6,6 +6,8 @@
 ; the process's save area, then restores another process the same way and
 ; returns (plp/rts) into *that* process's call to sched.
 .include "k.inc"
+.import con_raw
+.export sys_fg, tod_soft, sigint_fg, sigtstp_fg
 
 .segment "BSS"
 p_state:  .res MAXPROC
@@ -32,6 +34,13 @@ p_save:   .res MAXPROC*SAVESZ
 next_pid: .res 1
 new_slot: .res 1
 wk_ch:    .res 1
+fg_sig:   .res 1
+tod_soft: .res 1        ; 0 unchecked, 1 TOD ticks, $80 the IRQ ticks it
+tod_div:  .res 1
+tod_h:    .res 1
+tod_m:    .res 1
+tod_s:    .res 1
+tod_t:    .res 1
 
 .export p_pslot, new_slot, proc_entry, p_uid, sys_getuid, sys_setuid
 
@@ -188,24 +197,54 @@ user_ret:
         jmp SYS_EXIT
 
 ; block_on: A = channel. Sleep until wakeup(channel); then act on signals.
+; Callers loop: block_on may return early (a signal, a stop and continue).
 block_on:
         pha
         jsr check_signal
         pla
+        bcs @r              ; was stopped: let the caller look again
         ldx cur
         sta p_chan,x
         lda #PS_BLOCKED
         sta p_state,x
         jsr sched
-        ; fall through
-; check_signal: if the current process has a pending signal, it exits.
+        jmp check_signal
+@r:     rts
+
+; check_signal: if the current process has a pending signal, it exits; if
+; it has a pending stop, it stops until continued (then carry set).
 check_signal:
         ldx cur
         lda p_sig,x
+        bne @die
+        lda p_flags,x
+        and #PF_STOP
         beq @r
-        ora #$80
+        jsr do_stop
+        ldx cur
+        lda p_sig,x
+        bne @die
+        sec
+        rts
+@r:     clc
+        rts
+@die:   ora #$80
         jmp proc_exit
-@r:     rts
+
+; do_stop: stop the current process (it leaves the foreground) and tell
+; its parent. Returns once SIGCONT or fg makes it ready again.
+do_stop:
+        ldx cur
+        lda p_flags,x
+        and #<~(PF_STOP | PF_STOPREP)
+        ora #SP_BG
+        sta p_flags,x
+        lda #PS_STOPPED
+        sta p_state,x
+        lda p_pslot,x
+        ora #CH_CHILD
+        jsr wakeup
+        jmp sched
 
 ; wakeup: A = channel. Make every process blocked on it ready.
 wakeup:
@@ -237,9 +276,8 @@ irq:
         inc ticks+1
         bne @t
         inc ticks+2
-@t:     jsr con_cursor_tick
-        lda #CH_TICK
-        jsr wakeup
+@t:     jsr tod_tick
+        jsr con_cursor_tick
         ; wake sleepers whose deadline has passed
         ldx #MAXPROC-1
 @sl:    lda p_state,x
@@ -259,15 +297,28 @@ irq:
         sta p_state,x
 @sn:    dex
         bpl @sl
-        ; RUN/STOP in the keyboard buffer -> SIGINT (and drop the key)
+        ; RUN/STOP in the keyboard buffer -> SIGINT (and drop the key);
+        ; CTRL-Z -> SIGTSTP, unless a raw-mode program wants the key
         ldx $c6
         beq @nokb
         lda $0276,x
         cmp #$03
-        bne @nokb
+        bne @noc
         dec $c6
         jsr sigint_fg
-@nokb:  ; RUN/STOP edge -> SIGINT to foreground processes
+        jmp @nokb
+@noc:   cmp #$1a
+        bne @nokb
+        lda con_raw
+        bne @nokb
+        dec $c6
+        jsr sigtstp_fg
+@nokb:  ; keys left in the buffer: wake the console readers
+        lda $c6
+        beq @nokey
+        lda #CH_KEY
+        jsr wakeup
+@nokey: ; RUN/STOP edge -> SIGINT to foreground processes
         lda $91
         cmp #$7f
         bne @nostop
@@ -284,7 +335,16 @@ irq:
         beq @out
         lda p_sig,x
         bne @die
-        dec slice
+        lda p_flags,x
+        and #PF_STOP
+        beq @nstp
+        lda #1
+        sta in_kernel
+        jsr check_signal
+        lda #0
+        sta in_kernel
+        jmp @out
+@nstp:  dec slice
         bne @out
         lda #1
         sta in_kernel
@@ -306,7 +366,107 @@ irq:
         ora #$80
         jmp proc_exit
 
+; tod_tick: CIA 1's TOD clock counts the mains frequency on its TOD pin.
+; On a C64 fed from a DC supply that pin is dead and TOD stands still, so
+; half a second after boot (kmain started it at 00:00:00.0) the IRQ checks:
+; if it has not moved, every 6th jiffy adds a tenth of a second instead.
+; The registers stay the clock, so `date` and programs read and set it as
+; on any C64.
+tod_tick:
+        lda tod_soft
+        bmi @soft
+        bne @r              ; checked: TOD ticks by itself
+        lda ticks
+        cmp #30
+        bne @r
+        lda $dc09           ; seconds, then tenths (no latch)
+        ora $dc08
+        bne @hw
+        lda #6
+        sta tod_div
+        lda #$80
+        .byte $2c
+@hw:    lda #1
+        sta tod_soft
+@r:     rts
+@soft:  dec tod_div
+        bne @r
+        lda #6
+        sta tod_div
+        lda $dc0b           ; reading hours latches, tenths unlatches
+        sta tod_h
+        lda $dc0a
+        sta tod_m
+        lda $dc09
+        sta tod_s
+        lda $dc08
+        sed
+        clc
+        adc #1
+        cmp #$10
+        bcc @set            ; A = tenths
+        lda tod_s
+        adc #0              ; carry is set: +1
+        sta tod_s
+        cmp #$60
+        bcc @z
+        lda #0
+        sta tod_s
+        lda tod_m
+        adc #0
+        sta tod_m
+        cmp #$60
+        bcc @z
+        lda #0
+        sta tod_m
+        lda tod_h           ; 12-hour BCD, bit 7 = PM
+        and #$1f
+        adc #0
+        cmp #$13
+        bcc @h
+        lda #$01
+@h:     sta tod_t
+        lda tod_h
+        and #$80
+        ldx tod_t
+        cpx #$12            ; 11 -> 12 flips AM/PM
+        bne @k
+        eor #$80
+@k:     ora tod_t
+        sta tod_h
+@z:     lda #0
+@set:   cld
+        pha
+        lda tod_h
+        jsr tod_wh
+        pla
+        ldx tod_m
+        stx $dc0a
+        ldx tod_s
+        stx $dc09
+        sta $dc08           ; writing tenths starts it
+        rts
+
+; tod_wh: write A to the TOD hours (this stops the clock). The 6526 flips
+; AM/PM when 12 is written, so 12 goes in with the flag inverted.
+tod_wh:
+        tax
+        and #$7f
+        eor #$12
+        bne @w
+        txa
+        eor #$80
+        tax
+@w:     stx $dc0b
+        rts
+
+; sigint_fg / sigtstp_fg: interrupt or stop the foreground processes
+sigtstp_fg:
+        lda #SIGTSTP
+        .byte $2c           ; bit abs: skip the next lda
 sigint_fg:
+        lda #SIGINT
+        sta fg_sig
         ldx #MAXPROC-1
 @l:     lda p_state,x
         cmp #PS_READY
@@ -316,9 +476,15 @@ sigint_fg:
 @y:     lda p_flags,x
         and #(SP_BG | SP_IGNINT)
         bne @n
-        lda #SIGINT
+        lda fg_sig
+        cmp #SIGTSTP
+        beq @stop
         sta p_sig,x
-        lda #PS_READY
+        bne @rdy
+@stop:  lda p_flags,x
+        ora #PF_STOP
+        sta p_flags,x
+@rdy:   lda #PS_READY
         sta p_state,x
 @n:     dex
         bpl @l
@@ -423,7 +589,8 @@ sys_exit:
         and #$7f
         jmp proc_exit
 
-; wait(A = pid or $FF, X = flags) -> A = pid, X = exit code
+; wait(A = pid or $FF, X = flags) -> A = pid, X = exit code (WSTOPPED: it
+; stopped, reported once with W_UNTRACED)
 sys_wait:
         sta sb0
         stx sb1
@@ -443,8 +610,23 @@ sys_wait:
 @m:     inc sb2
         lda p_state,y
         cmp #PS_ZOMBIE
+        beq @reap
+        cmp #PS_STOPPED
         bne @n
-        lda #PS_FREE
+        lda sb1
+        and #W_UNTRACED
+        beq @n
+        lda p_flags,y
+        and #PF_STOPREP
+        bne @n
+        lda p_flags,y
+        ora #PF_STOPREP
+        sta p_flags,y
+        lda p_pid,y
+        ldx #WSTOPPED
+        clc
+        rts
+@reap:  lda #PS_FREE
         sta p_state,y
         lda p_pid,y
         ldx p_exit,y
@@ -480,18 +662,54 @@ sys_kill:
         beq @srch
         lda tmp0
         beq @ok
+        cmp #SIGCONT
+        beq @cont
+        cmp #SIGSTOP
+        beq @stop
+        cmp #SIGTSTP
+        beq @stop
         sta p_sig,x
-        lda p_state,x
+@wake:  lda p_state,x       ; blocked or stopped: run, to act on it
         cmp #PS_BLOCKED
-        bne @ok
+        bcc @ok
         lda #PS_READY
         sta p_state,x
 @ok:    clc
         rts
+@stop:  lda p_state,x
+        cmp #PS_STOPPED
+        beq @ok
+        lda p_flags,x
+        ora #PF_STOP
+        sta p_flags,x
+        bne @wake
+@cont:  lda p_flags,x
+        and #<~(PF_STOP | PF_STOPREP)
+        sta p_flags,x
+        lda p_state,x
+        cmp #PS_STOPPED
+        bne @ok
+        beq @wake
 @perm:  lda #EPERM
         sec
         rts
 @srch:  lda #ESRCH
+        sec
+        rts
+
+; fg(A = pid): make a process a foreground job and continue it
+sys_fg:
+        pha
+        jsr find_pid
+        bcs @srch
+        lda p_flags,x
+        and #<~SP_BG
+        sta p_flags,x
+        pla
+        ldx #SIGCONT
+        jmp sys_kill
+@srch:  pla
+        lda #ESRCH
         sec
         rts
 
@@ -569,7 +787,7 @@ sys_time:
         clc
         rts
 
-; procinfo(A = slot, r0 = buf[16]): pid ppid state flags pages name[11]
+; procinfo(A = slot, r0 = buf[17]): pid ppid state flags pages name[11] uid
 sys_procinfo:
         cmp #MAXPROC
         bcs @no
@@ -602,6 +820,9 @@ sys_procinfo:
         iny
         cpy #16
         bne @nl
+        ldx tmp0            ; slot (name_off kept it)
+        lda p_uid,x
+        sta (r0),y
         clc
         rts
 @no:    sec
@@ -619,4 +840,4 @@ name_off:
         clc
         adc tmp0            ; *11
         rts
-.export name_off, find_init
+.export name_off, find_init, find_pid

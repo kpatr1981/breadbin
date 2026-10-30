@@ -1,6 +1,8 @@
 ; Breadbin files: open-file table, descriptors, pipes, file syscalls
 .include "k.inc"
 
+FF_GONE = $80           ; f_flags: unlinked while open, freed at the last close
+
 .importzp fb, pp
 .import fs_name2, nm_dev, nm_ino, dl_off, f_done, dir_put, sb_ok
 .import fs_count_inodes, sb_ninodes, mnt_ino, mnt_active, p_pslot
@@ -92,7 +94,8 @@ oft_ref:
         rts
 
 ; oft_unref: A = entry. Drops a reference; frees the entry at zero.
-; Uses only ou_t and A/X/Y.
+; Uses only ou_t and A/X/Y, unless it closes the last open file of an
+; unlinked inode: then it frees the inode (disk I/O; tmp3 and k_n kept).
 oft_unref:
         tax
         dec f_ref,x
@@ -137,7 +140,98 @@ oft_unref:
         jmp page_free
 @free:  lda #FT_FREE
         sta f_type,x
+        lda f_flags,x
+        bmi ino_release
 @r:     rts
+
+; ino_release: X = the just-freed entry of a file unlinked while open.
+; Frees the inode when no other open file uses it any more.
+ino_release:
+        lda tmp3
+        pha
+        lda f_ino,x
+        pha
+        lda f_dev,x
+        tay
+        pla
+        tax
+        tya
+        ldy #0
+        jsr ino_open
+        bcs @done
+        lda tmp0
+        ldx tmp1
+        jsr iget
+        bcs @done
+        lda ci+I_TYPE
+        beq @done
+        lda ci+I_NLINK
+        bne @done
+        jsr ifree
+        jsr iput
+@done:  pla
+        sta tmp3
+        rts
+
+; ino_open: A = dev, X = ino, Y = f_flags bits to set on the open files of
+; that inode -> carry set if there are any. Leaves tmp0/tmp1 = dev/ino.
+ino_open:
+        sta tmp0
+        stx tmp1
+        sty tmp2
+        lda #0
+        sta ou_t
+        ldx #NFILE-1
+@l:     lda f_type,x
+        cmp #FT_FILE
+        beq @c
+        cmp #FT_DIR
+        bne @n
+@c:     lda f_dev,x
+        cmp tmp0
+        bne @n
+        lda f_ino,x
+        cmp tmp1
+        bne @n
+        lda f_flags,x
+        ora tmp2
+        sta f_flags,x
+        sec
+        ror ou_t
+@n:     dex
+        bpl @l
+        asl ou_t
+        rts
+
+; ino_busy: A = dev, X = ino -> carry set if a file or a process's working
+; directory uses it
+ino_busy:
+        ldy #0
+        jsr ino_open
+        bcs @r
+        ldx #MAXPROC-1
+@l:     lda p_state,x
+        beq @n
+        cmp #PS_ZOMBIE
+        beq @n
+        lda p_cwddev,x
+        cmp tmp0
+        bne @n
+        lda p_cwdino,x
+        cmp tmp1
+        beq @y
+@n:     dex
+        bpl @l
+        clc
+@r:     rts
+@y:     sec
+        rts
+
+; ifree: ci becomes a free inode (blocks released; caller iputs)
+ifree:  jsr itrunc
+        lda #0
+        sta ci+I_TYPE
+        rts
 
 ; fd_slot: A = fd -> X = index into p_fd (cur*8 + fd); carry set if fd bad
 fd_slot:
@@ -506,6 +600,11 @@ file_done:
 
 ; pipe_read: entry in sb6
 pipe_read:
+        lda r1
+        ora r1+1
+        bne @again
+        clc                 ; nothing asked for: r1 = 0 already
+        rts
 @again: ldx sb6
         ldy f_pipe,x
         sty sb5
@@ -905,8 +1004,12 @@ sys_rmdir:
         ldx rn_ino
         .import mnt_point
         jsr mnt_point
-        bcs @nm
-        lda #EBUSY
+        bcc @busy
+        lda of_dev
+        ldx rn_ino
+        jsr ino_busy
+        bcc @nm
+@busy:  lda #EBUSY
         sec
         rts
 @nm:    lda of_dev
@@ -977,15 +1080,19 @@ sys_unlink:
         bcs @r
         lda of_dev
         ldx rn_ino
-; drop a link from inode X on dev A; free it when none are left
+; drop a link from inode X on dev A; free it when none are left, or, while
+; it is still open, at its last close
 drop_link:
         jsr iget
         bcs @r
         dec ci+I_NLINK
         bne @put
-        jsr itrunc
-        lda #0
-        sta ci+I_TYPE
+        lda ci_dev
+        ldx ci_ino
+        ldy #FF_GONE
+        jsr ino_open
+        bcs @put
+        jsr ifree
 @put:   jmp iput
 @r:     rts
 

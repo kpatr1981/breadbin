@@ -89,7 +89,8 @@ page_free:
         bne @l
 @r:     rts
 
-; meminfo(r0 = buf): free pages, total pages, reu banks, procs used, max procs
+; meminfo(r0 = buf): free pages, total pages, ram banks (64 KB), procs used,
+; max procs, ram type (0 none, 1 REU, 2 GeoRAM)
 sys_meminfo:
         ldy #0
         lda free_pages
@@ -113,6 +114,9 @@ sys_meminfo:
         sta (r0),y
         iny
         lda #MAXPROC
+        sta (r0),y
+        iny
+        lda ram_type
         sta (r0),y
         clc
         rts

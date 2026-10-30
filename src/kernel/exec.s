@@ -5,7 +5,7 @@
 .include "k.inc"
 
 .importzp fb, pp
-.import f_done, p_pslot, new_slot, proc_entry, name_off, con_file
+.import f_done, p_pslot, new_slot, proc_entry, name_off, con_file, find_pid
 .import cwd_ptr, nm_dev, nm_ino, p_uid
 
 MAXARGS = 16
@@ -450,14 +450,16 @@ copy_args:
 
 ; setup_proc: fill in the process table entry and its initial context
 setup_proc:
-        ldx sp_slot
-        lda next_pid
-        sta p_pid,x
+@np:    lda next_pid        ; the next pid no live or zombie process holds
         inc next_pid
         bne @p
-        lda #2
-        sta next_pid
-@p:     lda #0
+        ldx #2
+        stx next_pid
+@p:     jsr find_pid
+        bcc @np
+        ldx sp_slot
+        sta p_pid,x
+        lda #0
         sta p_sig,x
         sta p_exit,x
         lda sp_flags

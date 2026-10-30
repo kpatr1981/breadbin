@@ -27,7 +27,12 @@
         beq @nr
         lda #<s_reu
         ldx #>s_reu
-        jsr print
+        ldy buf+5
+        cpy #2
+        bne @r1
+        lda #<s_geo
+        ldx #>s_geo
+@r1:    jsr print
         lda buf+2
         ldx #0
         stx tmp
@@ -67,6 +72,7 @@ putc_:  ldy #1
 hdr:    .byte "         total   used   free (k)", 10, 0
 s_mem:  .byte "mem:  ", 0
 s_reu:  .byte "reu:  ", 0
+s_geo:  .byte "georam:", 0
 s_proc: .byte "processes: ", 0
 .segment "BSS"
 buf: .res 8

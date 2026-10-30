@@ -76,11 +76,12 @@ stub_copy:                  ; copy X pages ($fb) -> ($fd)
 
 ; ---------------------------------------------------------------------
 .segment "RODATA"
-banner: .byte "breadbin 0.2", 10
+banner: .byte "breadbin 0.3", 10
         .byte "unix-like os by kpatronas@gmail.com", 10, 0
 s_mem:  .byte "memory: ", 0
 s_kb:   .byte " pages free", 10, 0
 s_reu:  .byte "reu: ", 0
+s_geo:  .byte "georam: ", 0
 s_reuk: .byte " x 64k", 10, 0
 s_noreu: .byte "reu: none", 10, 0
 s_init: .byte "/bin/init", 0
@@ -142,6 +143,24 @@ kmain:
         lda #>nmi_handler
         sta $0319
 
+        ; TOD clock: 50 Hz mains on PAL machines (the KERNAL leaves the
+        ; CIA at 60 Hz, so it ran 17% slow), start it at 00:00:00.0
+        lda $dc0e
+        and #$7f
+        ldx $02a6           ; 1 = PAL
+        beq @ntsc
+        ora #$80
+@ntsc:  sta $dc0e
+        lda $dc0f
+        and #$7f            ; TOD writes set the clock, not the alarm
+        sta $dc0f
+        lda #$92            ; 12 AM = 00 (written as 12 PM: the CIA flips it)
+        sta $dc0b
+        lda #0
+        sta $dc0a
+        sta $dc09
+        sta $dc08
+
         jsr con_init
         lda #<banner
         ldx #>banner
@@ -164,7 +183,12 @@ kmain:
         beq @noreu
         lda #<s_reu
         ldx #>s_reu
-        jsr con_puts_ax
+        ldy ram_type
+        cpy #2
+        bne @r1
+        lda #<s_geo
+        ldx #>s_geo
+@r1:    jsr con_puts_ax
         lda reu_banks
         ldx #0
         jsr con_dec
@@ -194,8 +218,18 @@ kmain:
 nmi_handler:
         rti
 
+; brk_handler: a BRK in a program kills only that process (exit code
+; 128+4, as for SIGILL); one in the kernel is a kernel bug
 brk_handler:
-        lda #<s_brk
+        lda in_kernel
+        bne @kern
+        ldx cur
+        cpx #$ff
+        beq @kern
+        inc in_kernel
+        lda #128+4
+        jmp proc_exit
+@kern:  lda #<s_brk
         ldx #>s_brk
         ; fall through
 ; panic: print message (A/X) and halt

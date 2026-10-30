@@ -24,9 +24,14 @@ PS_FREE    = 0
 PS_READY   = 1
 PS_BLOCKED = 2
 PS_ZOMBIE  = 3
+PS_STOPPED = 4
+
+; p_flags beyond the spawn flags (SP_BG, SP_IGNINT)
+PF_STOPREP = $20    ; stop already reported by wait
+PF_STOP    = $40    ; stop pending (CTRL-Z, SIGTSTP, SIGSTOP)
 
 ; wait channels
-CH_TICK  = $01      ; woken every tick (console polling)
+CH_KEY   = $01      ; woken by the IRQ while keys are waiting (console)
 CH_SLEEP = $02      ; woken when ticks reach p_wk (sleep)
 CH_CHILD = $80      ; | parent slot
 CH_PIPE  = $40      ; | pipe index
@@ -109,9 +114,11 @@ ST     = $90
 ; mem.s
 .global page_alloc, page_free, mem_init, sys_meminfo, free_pages, total_pages
 ; blk.s
-.global blk_init, bread, bdirty, bflush_all, buf_ptr, reu_banks, dev_present
+.global blk_init, bread, bdirty, bflush_all, buf_ptr, reu_banks, ram_type, dev_present
 .global iec_open, iec_close, ts_block, iec_command, cur_dev_set, dev_drive, dev_type
 .global bget_buf, binval
+.global ieclisten, iectalk, iecout, iecin, iecunlisten, iecuntalk, iec_init
+.global ie_st
 ; fs.s
 .global fs_mount, iget, iput, ci, ci_dev, ci_ino, bmap, namei, nameiparent
 .global fs_name, dir_lookup, dir_add, dir_remove, ialloc, itrunc, balloc

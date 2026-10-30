@@ -6,4 +6,4 @@
         ldx #>s
         jmp print
 .segment "RODATA"
-s: .byte "breadbin 0.2 by kpatronas@gmail.com", 10, 0
+s: .byte "breadbin 0.3 by kpatronas@gmail.com", 10, 0
