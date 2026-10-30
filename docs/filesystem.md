@@ -37,7 +37,7 @@ drive 9 on /mnt (cbm dos)
 | Device | What | Where |
 |---|---|---|
 | 0 | drive 8, the boot disk | `/` |
-| 1 | the REU RAM disk, if an REU is fitted | `/tmp` |
+| 1 | the RAM disk, if an REU or GeoRAM is fitted | `/tmp` |
 | 2, 3, 4 | drives 9, 10 and 11 | wherever you `mount` them |
 
 Mount points are ordinary directories (the boot disk has an empty `/mnt` for this). Up to four mounts can be active at once, `/tmp` included. Path lookup crosses into a mounted disk when it reaches the mount point, and `..` from the top of a mounted disk leads back out, so `cd /mnt/src; cd ../..` ends up at `/`.
@@ -96,13 +96,13 @@ A directory is a file of 16-byte entries: 1 byte for the inode number (0 = unuse
 
 ### How the kernel reaches the disk
 
-The kernel reads and writes whole sectors with the 1541's sector commands: `U1` reads a block, `B-P` with `U2` writes one. Those go through the KERNAL's serial routines on the command channel (15) and a data channel with a drive buffer (`#`). A cache of 6 blocks sits in front of the drive. It is write-through: every change goes to the disk at once, so nothing is lost if you switch off between commands.
+The kernel reads and writes whole sectors with the 1541's sector commands: `U1` reads a block, `B-P` with `U2` writes one. Those go over the serial bus through Breadbin's own IEC driver (`src/kernel/iec.s`), not the KERNAL ROM, on the command channel (15) and a data channel with a drive buffer (`#`). The driver follows the stock KERNAL's protocol and timing, so it works the same under the Commodore ROMs and the MEGA65 Open ROMs. A cache of 6 blocks sits in front of the drive. It is write-through: every change goes to the disk at once, so nothing is lost if you switch off between commands.
 
-While the disk is busy, every other process waits: the KERNAL's serial routines can't be interrupted safely. A stock 1541 reads roughly one block per second through these commands, so loading a 1–3 KB command takes a few seconds.
+While the disk is busy, every other process waits: the bus transfer can't be interrupted safely. A stock 1541 reads roughly one block per second through these commands, so loading a 1–3 KB command takes a few seconds.
 
-## The REU RAM disk (`/tmp`)
+## The RAM disk (`/tmp`)
 
-With a RAM Expansion Unit, the kernel formats the REU as c64fs at every boot and mounts it at `/tmp`. The layout is the same idea with different block numbers: superblock at block 0, bitmap at 1, inodes at 2–17. Its size is that of the REU, up to 2048 blocks (512 KB). It is fast, and it is **empty after every reboot**. Without an REU, `/tmp` is an ordinary directory on the boot disk.
+With a RAM Expansion Unit, or a GeoRAM when there is no REU, the kernel formats it as c64fs at every boot and mounts it at `/tmp`. The layout is the same idea with different block numbers: superblock at block 0, bitmap at 1, inodes at 2–17. Its size is that of the REU, up to 2048 blocks (512 KB). It is fast, and it is **empty after every reboot**. Without an REU, `/tmp` is an ordinary directory on the boot disk.
 
 ## Normal C64 disks (CBM DOS)
 
