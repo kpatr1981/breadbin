@@ -99,6 +99,12 @@ At the `login:` prompt, type `root` or `user`; neither has a password until you 
 
 On a C64 keyboard, `|` is **SHIFT + `-`**, and RUN/STOP interrupts the running command.
 
+## Disks
+
+The boot disk is mounted at `/`. More drives work too: put a disk in drive 9, 10 or 11 and `mount 9 /mnt`. A Breadbin disk keeps its directories; a normal C64 disk shows up flat and stays readable by other C64 software. To make a new disk, run `format 9 c64fs mydisk` (with directories) or `format 9 cbm mydisk` (a normal C64 disk). Both erase drive 9 and ask first. `df` shows free space, and `umount /mnt` detaches the disk.
+
+[docs/filesystem.md](docs/filesystem.md) explains it all: the on-disk layout of c64fs (superblock, bitmap, inodes, directories), the REU RAM disk, how normal C64 disks are handled, what `format` does, and the limits.
+
 ## Commands
 
 `sh` `init` `login` `ls [-l] [-a]` `cat` `echo` `grep [-v] [-c]` `wc` `head [-n]` `more` `edit` `cp` `mv` `rm` `mkdir` `rmdir` `pwd` `stat` `hexdump` `ps` `kill [-sig]` `sleep` `free` `df` `mount` `umount` `format` `uptime` `date` `uname [-a]` `version` `whoami` `passwd` `theme` `help` `clear` `count` `basic` `as`
@@ -116,6 +122,7 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`.
 | `tools/mkimage.py` | builds and inspects disk images (`ls`, `cat` subcommands) |
 | `tools/cx.py` | makes relocatable executables |
 | `tools/vicetest.py` | drives VICE for the automated tests |
+| `docs/filesystem.md` | disks, mounting, `format`, and the on-disk layout |
 | `docs/superpowers/` | design spec and implementation plan |
 
 ## How it works
