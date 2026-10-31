@@ -6,6 +6,7 @@
   ptest.py tests.test_bugs.Shell tests.test_bugs.GeoRAMRoot.test_boot_from_georam_image
   ptest.py -j 6 ...             at most 6 at a time (default 4)
   ptest.py --failed             only what failed last time
+  ptest.py --logdir build/ntsc  logs (and failed.txt) in another directory
 
 Each class keeps its own VICE session, port and disk image copy, so classes
 don't interfere. Logs go to build/ptest/<name>.log.
@@ -53,13 +54,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("-j", type=int, default=4)
     ap.add_argument("--failed", action="store_true", help="rerun what failed last time")
+    ap.add_argument("--logdir", default=os.path.join(ROOT, "build", "ptest"),
+                    help="where the logs go (a separate one per run when runs overlap)")
     ap.add_argument("names", nargs="*")
     a = ap.parse_args()
     sys.path.insert(0, ROOT)
     names = a.names or [m for f in sorted(os.listdir(os.path.join(ROOT, "tests")))
                         if f.startswith("test_") and f.endswith(".py")
                         for m in ["tests." + f[:-3]]]
-    logdir = os.path.join(ROOT, "build", "ptest")
+    logdir = a.logdir
     os.makedirs(logdir, exist_ok=True)
     failed_list = os.path.join(logdir, "failed.txt")
     if a.failed:
