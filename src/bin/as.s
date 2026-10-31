@@ -19,10 +19,10 @@ syp  = $23              ; symbol pointer
 obp  = $25              ; output pointer
 tq   = $27
 
-NSYM   = 220
+NSYM   = 180
 SYMSZ  = 18             ; name[15] value[2] flags
-OBMAX  = 8192
-RMAX   = 1024
+OBMAX  = 6144
+RMAX   = 768
 F_DEF  = 1
 F_REL  = 2
 F_SEEN = 4

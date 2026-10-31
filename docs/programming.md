@@ -275,7 +275,7 @@ This catches everything ordinary code does: `jsr`, `jmp`, absolute addressing, `
 - Syntax: `label: lda #<msg ; comment`, `name = expr`, `.byte 1, "text", >addr`, `.word expr`, `.res count`.
 - Operands: `#imm #<expr #>expr zp abs ,x ,y (zp,x) (zp),y (abs)`. Expressions: `$hex %bin decimal 'c'`, labels, `*`, `+` and `-`.
 - Predefined: `sys_exit` … `sys_fg` (every system call), `r0 r1 r2`, `argv argc`, `o_rdonly o_wronly o_rdwr o_creat o_trunc o_append`.
-- Limits: 8 KB of output, 220 symbols, no macros or include files. The user library can't be linked, so programs call the system directly (see `/home/hello.s`).
+- Limits: 6 KB of output, 180 symbols, no macros or include files. The user library can't be linked, so programs call the system directly (see `/home/hello.s`).
 
 It's a good tool for small utilities written on the machine. For anything big, use ca65.
 

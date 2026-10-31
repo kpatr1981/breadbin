@@ -820,8 +820,14 @@ sys_mount:
 ; /bin/format.  op 0: send the DOS command at r0 (NUL-terminated)
 ;               op 1: write the 256 bytes at r0 to block r1
 ;               op 2: read block r1 into the 256 bytes at r0
+; diskio(A = device, X = op): blocks of a mounted c64fs, through the cache
+; (root only, for /bin/fsck; the device is byte 6 of a stat buffer)
+;               op 3: read block r1 into r0, op 4: write r0 to block r1
 sys_diskio:
-        stx mo_ent
+        cpx #3
+        bcc @raw
+        jmp diskio_fs
+@raw:   stx mo_ent
         sec
         sbc #7
         cmp #2
@@ -893,6 +899,56 @@ sys_diskio:
         lda #EIO
 @r:     rts
 .import bwrite
+
+diskio_fs:
+        stx mo_ent
+        cmp #NDEV
+        bcs @inval
+        sta mo_dev
+        tax
+        lda dev_present,x
+        beq @inval
+        lda sb_ok,x
+        beq @inval
+        lda dev_type,x
+        bne @inval
+        ldy cur
+        lda p_uid,y
+        bne @perm
+        lda r1+1            ; block < nblocks
+        cmp sb_nblocks_hi,x
+        bcc @ok
+        bne @inval
+        lda r1
+        cmp sb_nblocks_lo,x
+        bcs @inval
+@ok:    lda mo_dev
+        ldx r1
+        ldy r1+1
+        jsr bread
+        bcs @r
+        ldy #0
+        lda mo_ent
+        cmp #4
+        beq @w
+@rl:    lda (bp),y
+        sta (r0),y
+        iny
+        bne @rl
+        clc
+@r:     rts
+@w:     lda (r0),y
+        sta (bp),y
+        iny
+        bne @w
+        jmp bdirty
+@inval: lda #EINVAL
+        sec
+        rts
+@perm:  lda #EPERM
+        sec
+        rts
+.import sb_ok, sb_nblocks_hi, sb_nblocks_lo, bdirty, p_uid
 
 ; ent_path: X = mount entry -> p1 = &mt_path[x*32]
 ent_path:

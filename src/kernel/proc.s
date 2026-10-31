@@ -269,6 +269,7 @@ wakeup:
 ; ---------------------------------------------------------------------
 irq:
         cld
+        inc in_irq
         lda $dc0d           ; acknowledge CIA1 timer
         jsr UDTIM
         jsr SCNKEY
@@ -314,7 +315,12 @@ irq:
         bne @nokb
         dec $c6
         jsr sigtstp_fg
-@nokb:  ; keys left in the buffer: wake the console readers
+@nokb:  lda restore_pending ; RESTORE while the kernel ran: kill the job now
+        beq @nores
+        lda #0
+        sta restore_pending
+        jsr sigkill_fg
+@nores: ; keys left in the buffer: wake the console readers
         lda $c6
         beq @nokey
         lda #CH_KEY
@@ -329,7 +335,8 @@ irq:
         jsr sigint_fg
         jmp @stopd
 @nostop: sta stop_prev
-@stopd: lda in_kernel
+@stopd: dec in_irq
+        lda in_kernel
         bne @kern
         ldx cur
         cpx #$ff
@@ -461,7 +468,11 @@ tod_wh:
 @w:     stx $dc0b
         rts
 
-; sigint_fg / sigtstp_fg: interrupt or stop the foreground processes
+; sigint_fg / sigtstp_fg / sigkill_fg: interrupt, stop or kill the
+; foreground processes
+sigkill_fg:
+        lda #SIGKILL
+        .byte $2c           ; bit abs: skip the next lda
 sigtstp_fg:
         lda #SIGTSTP
         .byte $2c           ; bit abs: skip the next lda

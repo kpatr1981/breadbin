@@ -5,12 +5,15 @@
 ;   < file  > file  >> file
 ;   cmd &                  background job
 ;   a ; b                  sequence
+;   a && b, a || b         run b only if a succeeded / failed; $? = exit status
+;   2> file, 2>&1         redirect stderr
 ;   "quoted words", # comments
 ; Built-ins: cd, exit, kill (also /bin/kill), jobs, fg, bg. `sh file` runs a
 ; script. CTRL-Z stops the foreground job; fg/bg [pid] continue it.
 ; Words with * or ? are expanded against the directory they name.
+; On the console, cursor up/down recall the last 8 lines.
 .include "../../include/breadbin.inc"
-.import print, eprint, putc, newline, print_dec, perr, argn, strlen, exit, parse_dec
+.import print, eprint, putc, newline, print_dec, perr, argn, strlen, exit, parse_dec, dec_str
 .importzp lp1, lp2
 
 MAXTOK  = 32
@@ -19,8 +22,12 @@ LINEMAX = 127
 
 zp1 = $23
 zp2 = $25
+tptr = $27
 
 T_WORD  = 0
+ST_MARK = 1             ; $? in a word, until expand_status replaces it
+HIST    = 8             ; lines of history (a power of two)
+HLEN    = 64            ; longer lines are not kept
 
 .segment "BSS"
 in_fd:   .res 1
@@ -63,6 +70,22 @@ bk_i:    .res 1
 bk_p:    .res 2
 pinfo:   .res 17
 lastjob: .res 1         ; job that fg/bg act on by default
+status:  .res 1         ; $?: exit status of the last command
+lastpid: .res 1         ; the last stage of the running pipeline (0: any)
+sep:     .res 1         ; the operator before the next command: ; a(&&) o(||)
+errf_lo: .res 1         ; 2> file
+errf_hi: .res 1
+errdup:  .res 1         ; 2>&1
+efd:     .res 1
+tsave:   .res 1
+xsave:   .res 1
+tlen:    .res 1
+tty:     .res 1         ; interactive on the console: edit lines in raw mode
+hn:      .res 1         ; history: lines stored
+hhead:   .res 1         ; the slot the next line goes to
+hsel:    .res 1         ; 0: a new line, k: the k-th most recent one
+kbuf:    .res 1
+hbuf:    .res HIST*HLEN
 job:     .res 1         ; job of the pipeline being started (its first pid)
 fgjob:   .res 1
 g_tok:   .res 1
@@ -115,7 +138,15 @@ start:
         lda #0
         sta interactive
 
-main:   lda interactive
+main:   lda #0
+        sta tty
+        lda interactive
+        beq loop
+        lda #0
+        jsr SYS_ISATTY
+        bcs loop
+        inc tty
+loop:   lda interactive
         beq @noprompt
         jsr reap
         jsr prompt
@@ -125,9 +156,9 @@ main:   lda interactive
         lda #0
         jmp exit
 @have:  jsr tokenize
-        bcs main
+        bcs loop
         jsr run_line
-        jmp main
+        jmp loop
 
 ; ---- prompt and job reaping ----
 prompt:
@@ -166,7 +197,10 @@ reap:   lda #$ff
 ; getline: next line from in_fd into `line` (NUL-terminated, no newline)
 ; carry set on EOF with nothing read
 getline:
-        lda #0
+        lda tty
+        beq @buf
+        jmp readline
+@buf:   lda #0
         sta lnlen
 @loop:  lda ipos
         cmp ilen
@@ -210,6 +244,155 @@ getline:
         clc
         rts
 
+; readline: a line from the console, edited in raw mode: DEL, cursor up and
+; down walk the history, CTRL-D on an empty line is EOF (carry set)
+readline:
+        lda #1
+        jsr SYS_CONMODE
+        lda #0
+        sta lnlen
+        sta hsel
+@key:   jsr rawkey
+        cmp #K_RET
+        beq @ret
+        cmp #K_DEL
+        beq @del
+        cmp #K_UP
+        beq @up
+        cmp #K_DOWN
+        beq @down
+        cmp #4              ; CTRL-D
+        beq @eof
+        cmp #$20
+        bcc @key
+        cmp #$7f
+        bcs @key
+        ldx lnlen
+        cpx #LINEMAX
+        bcs @key
+        sta line,x
+        inc lnlen
+        jsr putc
+        jmp @key
+@del:   lda lnlen
+        beq @key
+        dec lnlen
+        lda #K_DEL
+        jsr putc
+        jmp @key
+@up:    lda hsel
+        cmp hn
+        bcs @key
+        inc hsel
+        jsr recall
+        jmp @key
+@down:  lda hsel
+        beq @key
+        dec hsel
+        jsr recall
+        jmp @key
+@eof:   lda lnlen
+        bne @key
+        lda #0
+        jsr SYS_CONMODE
+        sec
+        rts
+@ret:   jsr newline
+        lda #0
+        jsr SYS_CONMODE
+        ldx lnlen
+        lda #0
+        sta line,x
+        cpx #HLEN
+        bcs @r
+        txa
+        beq @r
+        jsr hist_add
+@r:     clc
+        rts
+
+; rawkey -> A = next key (4 = CTRL-D on error or EOF)
+rawkey: lda #<kbuf
+        sta r0
+        lda #>kbuf
+        sta r0+1
+        lda #1
+        sta r1
+        lda #0
+        sta r1+1
+        lda in_fd
+        jsr SYS_READ
+        bcs @e
+        lda r1
+        beq @e
+        lda kbuf
+        rts
+@e:     lda #4
+        rts
+
+; recall: replace the line being edited with history entry hsel (0: empty)
+recall:
+@e:     lda lnlen
+        beq @c
+        dec lnlen
+        lda #K_DEL
+        jsr putc
+        jmp @e
+@c:     lda hsel
+        beq @r
+        lda hhead
+        sec
+        sbc hsel
+        and #HIST-1
+        jsr hslot
+@l:     ldy lnlen
+        lda (zp2),y
+        beq @r
+        sta line,y
+        inc lnlen
+        jsr putc
+        jmp @l
+@r:     rts
+
+; hist_add: line (NUL-terminated, 1 to HLEN-1 characters) becomes the newest
+hist_add:
+        lda hhead
+        jsr hslot
+        ldy #0
+@c:     lda line,y
+        sta (zp2),y
+        beq @d
+        iny
+        bne @c
+@d:     lda hhead
+        clc
+        adc #1
+        and #HIST-1
+        sta hhead
+        lda hn
+        cmp #HIST
+        bcs @r
+        inc hn
+@r:     rts
+
+; hslot: A = history slot (0-7) -> zp2 = &hbuf[A * 64]
+hslot:  pha
+        lsr a
+        lsr a
+        sta zp2+1           ; slot / 4 pages
+        pla
+        and #3
+        lsr a
+        ror a
+        ror a               ; (slot & 3) * 64
+        clc
+        adc #<hbuf
+        sta zp2
+        lda zp2+1
+        adc #>hbuf
+        sta zp2+1
+        rts
+
 ; ---- tokenizer ----
 ; tokenize `line` into tbuf/tlo/thi/ttype; carry set on error/empty
 tokenize:
@@ -234,10 +417,29 @@ tokenize:
         bcc @tok
         jmp @toomany
 @tok:
-        cmp #'|'
-        beq @op
+        cmp #'2'            ; 2> file, 2>&1
+        bne @t2
+        lda line+1,y
+        cmp #'>'
+        bne @t1
+        iny
+        lda line+1,y
         cmp #'&'
-        beq @op
+        bne @e2
+        lda line+2,y
+        cmp #'1'
+        bne @e2
+        iny
+        iny
+        lda #'D'
+        jmp @op
+@e2:    lda #'E'
+        jmp @op
+@t1:    lda line,y
+@t2:    cmp #'|'
+        beq @dbl
+        cmp #'&'
+        beq @dbl
         cmp #';'
         beq @op
         cmp #'<'
@@ -251,6 +453,15 @@ tokenize:
         iny
         jmp @op
 @gt:    lda #'>'
+        bne @op
+@dbl:   cmp line+1,y        ; && -> 'a', || -> 'o'
+        bne @op
+        iny
+        cmp #'|'
+        beq @or
+        lda #'a'
+        bne @op
+@or:    lda #'o'
 @op:    sta ttype,x
         inc ntok
         iny
@@ -286,9 +497,22 @@ tokenize:
         beq @quote
         cmp #$27            ; single quote
         beq @quote
-        sta tbuf,x
+        cmp #'$'
+        bne @lit
+        lda line+1,y
+        cmp #'?'
+        beq @status
+        lda #'$'
+@lit:   sta tbuf,x
         inx
         iny
+        jmp @wc
+@status:                    ; $?: a marker, expanded when the command runs
+        iny
+        iny
+        lda #ST_MARK
+        sta tbuf,x
+        inx
         jmp @wc
 @quote: sta qch
         iny
@@ -324,21 +548,44 @@ run_line:
         sta gpos
         sta gpos+1
         sta cur_tok
+        lda #';'
+        sta sep
 @cmd:   lda cur_tok
         cmp ntok
         bcs @r
-        ; find end of this command (';' or end)
+        ; find end of this command (; && || or end)
         tax
 @f:     cpx ntok
         beq @fe
         lda ttype,x
         cmp #';'
         beq @fe
+        cmp #'a'
+        beq @fe
+        cmp #'o'
+        beq @fe
         inx
         jmp @f
 @fe:    stx cmd_end
-        jsr run_cmd
+        ; a && b runs b only if a succeeded, a || b only if it failed
+        lda sep
+        cmp #';'
+        beq @run
+        ldx status
+        cmp #'a'
+        beq @and
+        cpx #0              ; ||
+        bne @run
+        beq @skip
+@and:   cpx #0
+        bne @skip
+@run:   jsr run_cmd
+@skip:  lda #';'
         ldx cmd_end
+        cpx ntok
+        beq @s
+        lda ttype,x
+@s:     sta sep
         inx
         stx cur_tok
         jmp @cmd
@@ -353,6 +600,7 @@ run_cmd:
 @ne:    lda #0
         sta bg
         sta job
+        sta lastpid
         sta npids
         sta prev_in
         ldx cmd_end
@@ -375,6 +623,8 @@ stage:  lda #0
         sta inf_hi
         sta outf_hi
         sta outapp
+        sta errf_hi
+        sta errdup
         ldx st_start
 @t:     cpx cmd_end
         bne @t1
@@ -393,6 +643,7 @@ stage:  lda #0
         lda thi,x
         sta zp1+1
         stx g_tok
+        jsr expand_status
         jsr is_glob
         bcs @lit
         jsr glob
@@ -404,8 +655,13 @@ stage:  lda #0
         inx
         jmp @t
 @op:    cmp #'&'
-        bne @op2
+        bne @od
         jmp syntax
+@od:    cmp #'D'            ; 2>&1
+        bne @op2
+        inc errdup
+        inx
+        jmp @t
 @op2:   pha
         inx
         cpx cmd_end
@@ -414,11 +670,19 @@ stage:  lda #0
         bne @syn
         pla
         cmp #'<'
-        bne @out
+        bne @oe
         lda tlo,x
         sta inf_lo
         lda thi,x
         sta inf_hi
+        inx
+        jmp @t
+@oe:    cmp #'E'            ; 2> file
+        bne @out
+        lda tlo,x
+        sta errf_lo
+        lda thi,x
+        sta errf_hi
         inx
         jmp @t
 @out:   ldy #0
@@ -453,6 +717,8 @@ stage:  lda #0
         lda first
         and last
         beq @ext
+        lda #0
+        sta status
         jsr builtin
         bcc @ext
         rts
@@ -513,7 +779,24 @@ stage:  lda #0
         jsr close_pout
         pla
         sta pout
-@noout: jsr make_path
+@noout: lda #0              ; stderr: 2> file
+        sta efd
+        lda errf_hi
+        beq @noerr
+        lda errf_lo
+        sta r0
+        lda errf_hi
+        sta r0+1
+        lda #(O_WRONLY | O_CREAT | O_TRUNC)
+        jsr SYS_OPEN
+        bcc @eok
+        ldx errf_lo
+        ldy errf_hi
+        jsr perr
+        jsr close_pout
+        jmp abort
+@eok:   sta efd
+@noerr: jsr make_path
         lda #<cmdpath
         sta r0
         lda #>cmdpath
@@ -525,9 +808,20 @@ stage:  lda #0
         lda job             ; every stage joins the job of the first one
         sta r2
         ldy #SP_JOB
-        lda bg
+        lda errdup          ; 2>&1: stderr = this stage's stdout
+        beq @ne1
+        lda pout
+        sta r2+1
+        ldy #(SP_JOB | SP_ERR)
+@ne1:   lda efd
+        beq @ne2
+        sta r2+1
+        ldy #(SP_JOB | SP_ERR)
+@ne2:   lda bg
         beq @fg
-        ldy #(SP_JOB | SP_BG)
+        tya
+        ora #SP_BG
+        tay
 @fg:    lda pin
         ldx pout
         jsr SYS_SPAWN
@@ -535,14 +829,20 @@ stage:  lda #0
         ldx av
         ldy av+1
         jsr perr
+        lda #127            ; $?: command not found (or not runnable)
+        sta status
         jmp @cl
-@spok:  ldx job
+@spok:  sta lastpid
+        ldx job
         bne @inj
         sta job
 @inj:   ldx npids
         sta pids,x
         inc npids
-@cl:    jsr close_pin
+@cl:    lda efd
+        beq @cl2
+        jsr SYS_CLOSE
+@cl2:   jsr close_pin
         jsr close_pout
         lda pr
         sta prev_in
@@ -558,6 +858,8 @@ stage:  lda #0
         beq @r
         lda bg
         beq @wl
+        lda #0
+        sta status
         lda #'['
         jsr putc
         lda job
@@ -579,7 +881,17 @@ fgwait: sta fgjob
         jsr SYS_WAIT
         bcs @ok             ; ECHILD: all of the job's processes are gone
         cpx #WSTOPPED
+        beq @stop
+        ldy lastpid         ; $? is the last stage's exit code
+        beq @st
+        cmp lastpid
         bne @w
+@st:    stx status
+        jmp @w
+@stop:  lda #128+SIGTSTP
+        sta status
+        lda #0
+        sta lastpid
         lda fgjob
         sta lastjob
         jsr newline
@@ -721,6 +1033,69 @@ glob:   lda zp1
         jmp add_arg
 @r:     rts
 
+; expand_status: if the word at zp1 has $? in it, copy it into the glob
+; buffer with the exit status of the last command there; zp1 = the copy
+expand_status:
+        ldy #0
+@f:     lda (zp1),y
+        beq @r
+        cmp #ST_MARK
+        beq @go
+        iny
+        bne @f
+@r:     rts
+@go:    lda gpos+1
+        bne @r
+        lda gpos
+        cmp #256-64
+        bcs @r
+        lda zp1
+        sta zp2
+        lda zp1+1
+        sta zp2+1
+        lda #<gbuf
+        clc
+        adc gpos
+        sta zp1
+        lda #>gbuf
+        adc #0
+        sta zp1+1
+        lda #0
+        sta tsave           ; index into the word
+        sta xsave           ; index into the copy
+@c:     ldy tsave
+        inc tsave
+        lda (zp2),y
+        cmp #ST_MARK
+        beq @st
+        ldy xsave
+        inc xsave
+        sta (zp1),y
+        cmp #0
+        bne @c
+        lda xsave
+        clc
+        adc gpos
+        sta gpos
+        rts
+@st:    lda status
+        ldx #0
+        jsr dec_str         ; A/X = digits, Y = length
+        sta tptr
+        stx tptr+1
+        sty tlen
+        ldx #0
+@d:     txa
+        tay
+        lda (tptr),y
+        ldy xsave
+        inc xsave
+        sta (zp1),y
+        inx
+        cpx tlen
+        bne @d
+        jmp @c
+
 ; g_store: append word[0..d) + name to the glob buffer and add it to av
 g_store:
         lda gpos+1
@@ -846,7 +1221,9 @@ abort:  jsr close_pin
         lda pr
         beq @w
         jsr SYS_CLOSE
-@w:     lda #0
+@w:     lda #1
+        sta status
+        lda #0
         sta bg
         lda #1
         sta last
@@ -855,7 +1232,9 @@ abort:  jsr close_pin
         jsr fgwait
 @r:     rts
 
-syntax: lda prev_in
+syntax: lda #2
+        sta status
+        lda prev_in
         beq @n
         jsr SYS_CLOSE
 @n:     lda #<s_syntax
@@ -924,6 +1303,8 @@ builtin:
         ldx r0
         ldy r0+1
         jsr perr
+        lda #1
+        sta status
 @done:  sec
         rts
 @nocd:  lda #<s_kill
@@ -1014,6 +1395,8 @@ bi_kill:
 @bad:   ldx bk_p
         ldy bk_p+1
         jsr perr
+        lda #1
+        sta status
 @n:     inc bk_i
         jmp @l
 @done:  sec
@@ -1050,6 +1433,8 @@ bi_bg:  jsr job_arg
 
 ; job_err: A = errno from fg/bg; a pid that isn't running is "no such job"
 job_err:
+        ldx #1
+        stx status
         cmp #ESRCH
         beq job_none
         ldx av

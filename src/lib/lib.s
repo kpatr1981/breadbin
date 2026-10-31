@@ -13,7 +13,7 @@ lval = $3a              ; 2 bytes
 
 .export print, eprint, fprint, putc, eputc, newline, print_dec, print_dec_w
 .export strlen, parse_dec, strcmp, argn, perr, errstr, exit, write_buf
-.export fputc, print_hex, getc, set_input, open_or_die, basename
+.export fputc, print_hex, getc, set_input, open_or_die, basename, dec_str
 
 .segment "BSS"
 lchar:  .res 1

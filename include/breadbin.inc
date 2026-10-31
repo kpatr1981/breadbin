@@ -61,6 +61,7 @@ O_APPEND = $40
 SP_BG     = $01
 SP_IGNINT = $02
 SP_JOB    = $04      ; job control: r2 = job (process group) to join, 0 = a new one
+SP_ERR    = $08      ; stderr is fd r2+1 (default: the caller's fd 2)
 
 ; wait flags (X)
 W_NOHANG   = $01

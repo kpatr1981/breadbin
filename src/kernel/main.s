@@ -24,6 +24,8 @@ tmp2:         .res 1
 tmp3:         .res 1
 stop_prev:    .res 1
 intr_pending: .res 1
+in_irq:       .res 1    ; the IRQ handler is running
+restore_pending: .res 1 ; RESTORE came while the kernel ran
 
 ; ---------------------------------------------------------------------
 .segment "LOADADDR"
@@ -215,7 +217,34 @@ kmain:
 @run:   sei
         jmp sched           ; never returns here (cur = $FF, nothing saved)
 
+; nmi_handler: RESTORE (or a CIA 2 NMI). A foreground program that was
+; running is killed at once, even one hung with interrupts off; otherwise
+; (kernel, IRQ handler, idle) the next IRQ sends SIGKILL to the foreground
+; job. The KERNAL's NMI entry saves no registers.
 nmi_handler:
+        pha
+        txa
+        pha
+        lda #$7f            ; CIA 2 NMIs off, and acknowledged
+        sta $dd0d
+        lda $dd0d
+        lda in_kernel
+        ora in_irq
+        bne @later
+        ldx cur
+        cpx #$ff
+        beq @later
+        lda p_flags,x
+        and #(SP_BG | SP_IGNINT)
+        bne @later
+        inc in_kernel
+        lda #128+SIGKILL
+        jmp proc_exit
+@later: lda #1
+        sta restore_pending
+        pla
+        tax
+        pla
         rti
 
 ; brk_handler: a BRK in a program kills only that process (exit code

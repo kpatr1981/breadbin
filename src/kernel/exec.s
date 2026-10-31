@@ -58,7 +58,7 @@ spawn_kernel:
 sys_spawn:
         pha
         tya
-        and #(SP_BG | SP_IGNINT | SP_JOB)
+        and #(SP_BG | SP_IGNINT | SP_JOB | SP_ERR)
         sta sp_flags
         lda r2
         sta sp_pgrp
@@ -71,7 +71,12 @@ sys_spawn:
         jsr fd_get
         bcs @r
         stx sp_out
-        lda #2
+        lda sp_flags        ; stderr: fd r2+1 with SP_ERR, else our fd 2
+        and #SP_ERR
+        beq @e2
+        lda r2+1
+        .byte $2c           ; bit abs: skip the lda #2
+@e2:    lda #2
         jsr fd_get
         bcc @e
         ldx #$ff
