@@ -970,6 +970,9 @@ glob:   lda zp1
         iny
         cpy #47
         bcc @dc
+        cpy g_d
+        beq @dz
+        jmp @lit            ; a directory name too long for g_dir: as is
 @dz:    cpy #1
         beq @root
         dey                 ; drop the trailing '/'

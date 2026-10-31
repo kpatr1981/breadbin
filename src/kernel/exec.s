@@ -6,7 +6,8 @@
 
 .importzp fb, pp
 .import f_done, p_pslot, new_slot, proc_entry, name_off, con_file, find_pid
-.import cwd_ptr, nm_dev, nm_ino, p_uid, p_pgrp
+.import cwd_ptr, nm_dev, nm_ino, p_uid, p_pgrp, sched_found, con_release
+.export sys_exec
 
 MAXARGS = 16
 
@@ -110,7 +111,43 @@ spawn_common:
         sec
         rts
 @slot:  stx sp_slot
-        ; find and check the program
+        jsr load_prog
+        bcs @r2
+        jsr setup_proc
+        clc
+@r2:    rts
+
+; exec(r0 = path, r1 = argv): this process becomes that program, keeping
+; its pid, parent, job, flags, descriptors and working directory. The new
+; image is loaded first (argv still points into the old one), so an error
+; comes back to the caller with nothing changed.
+sys_exec:
+        ldx cur
+        stx sp_slot
+        jsr load_prog
+        bcs @r
+        ldx cur
+        lda p_pid,x
+        jsr con_release     ; leave raw console mode, if it was on
+        ldx cur
+        lda p_mpage,x
+        ldy p_mlen,x
+        jsr page_free
+        ldx cur
+        lda base
+        sta p_mpage,x
+        lda npages
+        sta p_mlen,x
+        jsr set_name
+        jsr init_context
+        sei                 ; the old context is abandoned: start the new
+        ldx cur             ; one as sched would
+        jmp sched_found
+@r:     rts
+
+; load_prog: r0 = path, r1 = argv -> the program in pages base/npages,
+; relocated, with its arguments copied in; carry set (A = errno) if not
+load_prog:
         lda r0
         sta pp
         lda r0+1
@@ -224,7 +261,6 @@ spawn_common:
         bcs @fail
         jsr zero_bss
         jsr copy_args
-        jsr setup_proc
         clc
         rts
 @bad:   lda #ENOEXEC
@@ -548,7 +584,18 @@ setup_proc:
         jsr set_name
         ; cwd
         jsr copy_cwd
-        ; saved context: zero ZP image, then argv/argc/entry
+        jsr init_context
+        ldx sp_slot
+        lda #PS_READY
+        sta p_state,x
+        lda p_pid,x
+        clc
+        rts
+
+; init_context: slot sp_slot gets the saved context of a program that is
+; about to start: a zero ZP image with argv/argc/entry, and a stack that
+; returns into proc_entry
+init_context:
         ldx sp_slot
         jsr slot_save_ptr
         php
@@ -597,10 +644,6 @@ setup_proc:
         ldx sp_slot
         lda #$fc
         sta p_sp,x
-        lda #PS_READY
-        sta p_state,x
-        lda p_pid,x
-        clc
         rts
 
 ; give_fd: X = open-file entry ($ff = none), Y = p_fd index; Y++
@@ -631,15 +674,22 @@ set_name:
         ldx tmp2
         lda #NAMELEN-1
         sta tmp1
+        php
+        sei                 ; the names are under the KERNAL ROM
+        lda #MAP_RAM
+        sta $01
 @c:     lda (pp),y
         beq @ce
-        sta p_name,x
+        sta P_NAME,x
         inx
         iny
         dec tmp1
         bne @c
 @ce:    lda #0
-        sta p_name,x
+        sta P_NAME,x
+        lda #MAP_KERNAL
+        sta $01
+        plp
         rts
 
 copy_cwd:
@@ -652,12 +702,19 @@ copy_cwd:
         jsr cwd_ptr
         lda #$ff
         sta cur
+        php
+        sei                 ; (under the KERNAL ROM)
+        lda #MAP_RAM
+        sta $01
         ldy #0
         lda #'/'
         sta (p1),y
         iny
         lda #0
         sta (p1),y
+        lda #MAP_KERNAL
+        sta $01
+        plp
         rts
 @par:   jsr cwd_ptr
         lda p1
@@ -671,9 +728,16 @@ copy_cwd:
         jsr cwd_ptr
         pla
         sta cur
+        php
+        sei
+        lda #MAP_RAM
+        sta $01
         ldy #CWDLEN-1
 @l:     lda (p2),y
         sta (p1),y
         dey
         bpl @l
+        lda #MAP_KERNAL
+        sta $01
+        plp
         rts

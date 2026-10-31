@@ -7,7 +7,7 @@
 ; returns (plp/rts) into *that* process's call to sched.
 .include "k.inc"
 .import con_raw
-.export sys_fg, tod_soft, sigint_fg, sigtstp_fg, tod_tick
+.export sys_fg, tod_soft, sigint_fg, sigtstp_fg, tod_tick, sched_found
 
 .segment "BSS"
 p_state:  .res MAXPROC
@@ -28,10 +28,9 @@ p_pgrp:   .res MAXPROC      ; job (process group): the pid of its first process
 p_wk0:    .res MAXPROC      ; sleep deadline (jiffies)
 p_wk1:    .res MAXPROC
 p_wk2:    .res MAXPROC
-p_name:   .res MAXPROC*NAMELEN
 p_fd:     .res MAXPROC*NFD
-p_cwd:    .res MAXPROC*CWDLEN
-; p_save (MAXPROC*SAVESZ) is at P_SAVE, under the KERNAL ROM
+; p_save (MAXPROC*SAVESZ), p_cwd (MAXPROC*CWDLEN) and p_name
+; (MAXPROC*NAMELEN) are at P_SAVE, P_CWD and P_NAME, under the KERNAL ROM
 next_pid: .res 1
 new_slot: .res 1
 wk_ch:    .res 1
@@ -150,7 +149,7 @@ sched:
         ldx #0
 @c:     lda p_state,x
         cmp #PS_READY
-        beq @found
+        beq sched_found
         dey
         bne @n
         ; nothing ready: idle with interrupts on until something wakes
@@ -162,12 +161,15 @@ sched:
         ldx #MAXPROC-1
 @il:    lda p_state,x
         cmp #PS_READY
-        beq @found
+        beq sched_found
         dex
         bpl @il
         jmp @idle
 
-@found: stx cur
+; sched_found: X = the slot to run (interrupts off): restore it and return
+; into its call to sched (exec jumps here too, with a fresh context)
+sched_found:
+        stx cur
         lda #SLICE
         sta slice
         jsr slot_save_ptr
@@ -887,17 +889,24 @@ sys_procinfo:
         iny
         lda p_mlen,x
         sta (r0),y
-        ; name
+        ; name (under the KERNAL ROM)
         txa
         jsr name_off
         tax
         ldy #5
-@nl:    lda p_name,x
+        php
+        sei
+        lda #MAP_RAM
+        sta $01
+@nl:    lda P_NAME,x
         sta (r0),y
         inx
         iny
         cpy #16
         bne @nl
+        lda #MAP_KERNAL
+        sta $01
+        plp
         ldx tmp0            ; slot (name_off kept it)
         lda p_uid,x
         sta (r0),y

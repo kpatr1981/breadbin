@@ -31,7 +31,7 @@ class Boot(unittest.TestCase):
 
     def test_01_banner(self):
         s = self.v.screen()
-        self.assertIn("breadbin 0.3", s)
+        self.assertIn("breadbin 0.4", s)
         self.assertIn("kpatronas@gmail.com", s)
 
     def test_02_echo(self):
@@ -127,9 +127,9 @@ class Boot(unittest.TestCase):
         self.assertNotIn("count", self.run_("ps"))
 
     def test_15_too_many_processes(self):
-        # init + login + sh + 9 jobs fill the 12-slot process table
+        # init + sh (login became the shell) + 10 jobs fill the 12-slot table
         pids = []
-        for _ in range(9):
+        for _ in range(10):
             pids.append(self.run_("sleep 9999 &").strip("[]"))
         out = self.v.run("sleep 9999 &", clear=False)
         self.assertIn("too many processes", out)
@@ -183,7 +183,7 @@ class Boot(unittest.TestCase):
         self.assertTrue(self.run_("uptime").startswith("up "))
         self.run_("date 13:45:10")
         self.assertTrue(self.run_("date").startswith("13:4"))
-        self.assertEqual(self.run_("version"), "breadbin 0.3 by kpatronas@gmail.com")
+        self.assertEqual(self.run_("version"), "breadbin 0.4 by kpatronas@gmail.com")
         size = os.path.getsize(os.path.join(ROOT, "rootfs", "etc", "motd"))
         self.assertIn("size: %d" % size, self.run_("stat /etc/motd"))
         self.assertIn("0000: 77 65 6c 63", self.run_("hexdump /etc/motd | head -1"))

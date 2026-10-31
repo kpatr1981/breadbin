@@ -1,4 +1,4 @@
-; login: ask for a user name (and password), then run that user's shell
+; login: ask for a user name (and password), then become that user's shell
 .include "../../include/breadbin.inc"
 .import print, eprint, newline, putc, pw_find_name, pw_hash
 .import pw_hashs, pw_uid, pw_home, pw_name
@@ -51,15 +51,8 @@ start:
         sta r1
         lda #>sh_argv
         sta r1+1
-        lda #0
-        ldx #1
-        ldy #SP_IGNINT
-        jsr SYS_SPAWN
-        bcs @bad
-        ldx #0
-        jsr SYS_WAIT
-        lda #0
-        jmp SYS_EXIT
+        jsr SYS_EXEC        ; login becomes the shell (same pid: init
+        jmp @bad            ; waits for it); back here only on an error
 @bad:   lda #<s_bad
         ldx #>s_bad
         jsr eprint

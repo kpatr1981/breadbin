@@ -91,7 +91,7 @@ Then type `LOAD"*",8,1` and `RUN`, as in VICE.
 
 Things to know:
 
-- **No cartridges.** The kernel runs at `$7D00–$CFFF`, over the area where a cartridge maps its ROM, so Action Replay, Final Cartridge, EasyFlash and the like must be removed or switched off. An REU or a GeoRAM is fine: they only use the I/O area.
+- **No cartridges.** The kernel runs at `$7F00–$CFFF`, over the area where a cartridge maps its ROM, so Action Replay, Final Cartridge, EasyFlash and the like must be removed or switched off. An REU or a GeoRAM is fine: they only use the I/O area.
 - **Disk access is slowish.** Breadbin has its own serial bus driver, and it loads a small routine into the 1541 that sends sectors about twice as fast as the standard protocol (the disk's rotation is the limit after that). Loading a command from a floppy still takes a second or two, and the system pauses while the drive works. A drive that can't run 1541 code (SD2IEC) gets the standard protocol. JiffyDOS doesn't help, but it doesn't get in the way either. With an REU of 256 KB or more, every block read from drive 8 is kept in the REU, so the second load of a command is instant.
 - **Handled:** PAL and NTSC, C64s on DC power supplies (whose TOD clock never ticks: the kernel keeps time itself), and a C128 in C64 mode with a 1541 or 1571.
 - **Not supported:** the 1581 and 40-track disks.
@@ -165,7 +165,7 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`, `fg`, `bg`. CTRL-Z stops the fore
 
 ## FAQ
 
-**How much memory does it use?** The kernel is about 20 KB of RAM at `$7D00–$CFFF`, including its tables, its buffers, the system-call jump table at `$CF00` and the user library that every program shares; the process save areas sit in the RAM under the KERNAL ROM. It has no ROM of its own and calls only a few KERNAL routines, for the keyboard and the screen. That leaves 117 pages (29 KB) at `$0800–$7CFF` for programs, and each program gets its own pages. With an REU or a GeoRAM you also get a RAM disk at `/tmp`.
+**How much memory does it use?** The kernel is about 20 KB of RAM at `$7F00–$CFFF`, including its tables, its buffers, the system-call jump table at `$CF00` and the user library that every program shares; the process save areas, names and working directories sit in the RAM under the KERNAL ROM. It has no ROM of its own and calls only a few KERNAL routines, for the keyboard and the screen. That leaves 119 pages (30 KB) at `$0800–$7EFF` for programs, and each program gets its own pages. With an REU or a GeoRAM you also get a RAM disk at `/tmp`.
 
 **How can programs run side by side without an MMU?** There is no memory protection and no virtual memory. Every program is relocated when it is loaded (see [How it works](#how-it-works)), so each one runs in its own pages and no two need the same addresses. That is the model of early Unix on machines without an MMU, or of AmigaOS. The cost: a program with a bug can overwrite another program's memory, or the kernel's. The kernel does catch some crashes: a program that hits a `BRK` is killed, and the rest keeps running.
 

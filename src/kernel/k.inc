@@ -1,8 +1,10 @@
 ; Breadbin kernel internal definitions
 .include "../../include/breadbin.inc"
 
-KSTART  = $7D00     ; must match KRAM in kernel.cfg
+KSTART  = $7F00     ; must match KRAM in kernel.cfg
 P_SAVE  = $E000     ; the process save areas: RAM under the KERNAL ROM
+P_CWD   = P_SAVE + MAXPROC*SAVESZ   ; working directory names, there too
+P_NAME  = P_CWD + MAXPROC*CWDLEN    ; process names, there too
 MAP_KERNAL = $36    ; $01: BASIC out, KERNAL and I/O in (the kernel's state)
 MAP_RAM    = $35    ; $01: both ROMs out, I/O in (interrupts must be off)
 MAXPROC = 12
@@ -113,7 +115,7 @@ ST     = $90
 .global irq, sched, block_on, wakeup, proc_exit, sys_exit, sys_wait, sys_kill
 .global sys_getpid, sys_yield, sys_sleep, sys_procinfo, sys_time
 .global p_state, p_pid, p_ppid, p_flags, p_chan, p_sp, p_mpage, p_mlen
-.global p_sig, p_exit, p_name, p_fd, p_cwd, p_cwdino, p_cwddev
+.global p_sig, p_exit, p_fd, p_cwdino, p_cwddev
 .global next_pid, proc_init, slot_save_ptr, check_signal
 ; mem.s
 .global page_alloc, page_free, mem_init, sys_meminfo, free_pages, total_pages

@@ -759,14 +759,16 @@ iec_write:
 ; ---- fast read (the drive code in drive.s) ----
 ; fast_read: sector trk/sct of drive rq_dev into (bp). Carry set if it
 ; can't, or the read failed: the caller reads the slow way (and reports).
+fr_no:  sec
+        rts
 fast_read:
         ldx rq_dev
         lda dev_present,x
-        beq @no             ; (raw diskio: unmounted drives read slowly)
+        beq fr_no           ; (raw diskio: unmounted drives read slowly)
         lda dev_type,x
-        bne @no
+        bne fr_no
         lda fl_bad,x
-        bne @no
+        bne fr_no
         lda fl_up,x
         bne @go
         jsr drv_upload
@@ -814,7 +816,21 @@ fast_read:
         sta $dd00
         sec
         rts
-@bad:   ldx rq_dev          ; no drive code here (or it hangs): never again
+@bad:   jsr cmd_status      ; why? "73": the drive was switched off and on
+        lda tmp0            ; (it leaves the two digits in tmp0/tmp1)
+        cmp #'7'
+        bne @never
+        lda tmp1
+        cmp #'3'
+        bne @never
+        lda tmp2            ; reset: its channels and our code are gone.
+        pha                 ; Open it again (fl_up = 0: the code goes back
+        ldx rq_dev          ; up at the next read); this read goes slowly
+        jsr iec_open
+        pla
+        sta tmp2
+        jmp @no
+@never: ldx rq_dev          ; no drive code here (or it hangs): never again
         inc fl_bad,x
 @no:    sec
         rts

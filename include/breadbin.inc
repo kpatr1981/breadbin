@@ -62,6 +62,8 @@ SYS_ERRSTR   = SYS_BASE + 3*49  ; A = errno -> A/X = message
 SYS_OPENDIE  = SYS_BASE + 3*50  ; A/X = path, Y = flags -> A = fd, or print the error and exit 1
 SYS_BASENAME = SYS_BASE + 3*51  ; A/X = path -> A/X = the part after the last '/'
 
+SYS_EXEC     = SYS_BASE + 3*52  ; r0 = path, r1 = argv: this process becomes that program (returns only on error)
+
 ; argument registers (zero page, saved per process)
 r0 = $02
 r1 = $04

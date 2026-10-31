@@ -287,7 +287,10 @@ cbm_read:
         bne @full
         iny
         lda (bp),y
-        clc
+        cmp #2
+        bcs @ok
+        lda #1              ; a damaged link (under 2): nothing in it
+@ok:    clc
         adc #1              ; last sector: valid up to link_s
         jmp @lim
 @full:  lda #0              ; 256

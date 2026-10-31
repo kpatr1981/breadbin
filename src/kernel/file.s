@@ -1213,7 +1213,13 @@ sys_rename:
         lda #EEXIST
         sec
 @r2:    rts
-@rep:   lda rn_od
+@rep:   lda rn_type         ; a directory can't take a file's place
+        cmp #T_DIR
+        bne @rep2
+        lda #ENOTDIR
+        sec
+        rts
+@rep2:  lda rn_od
         ldx rn_npi
         jsr iget
         bcs @r2
@@ -1313,18 +1319,26 @@ sys_chdir:
         sta p_cwddev,x
         lda nm_ino
         sta p_cwdino,x
-        ; copy pbuf into p_cwd[cur]
+        ; copy pbuf into p_cwd[cur] (under the KERNAL ROM)
         jsr cwd_ptr
+        php
+        sei
+        lda #MAP_RAM
+        sta $01
         ldy #0
 @c:     lda pbuf,y
         sta (p1),y
         beq @e
         iny
         bne @c
-@e:     clc
+@e:     lda #MAP_KERNAL
+        sta $01
+        plp
+        clc
         rts
 
-; cwd_ptr: p1 = &p_cwd[cur*48]
+; cwd_ptr: p1 = &p_cwd[cur*48]. The names are under the KERNAL ROM: a
+; caller switches it out (MAP_RAM, interrupts off) around its copy loop.
 cwd_ptr:
         lda cur
         asl a
@@ -1349,10 +1363,10 @@ cwd_ptr:
         sta p1+1            ; *48
         lda p1
         clc
-        adc #<p_cwd
+        adc #<P_CWD
         sta p1
         lda p1+1
-        adc #>p_cwd
+        adc #>P_CWD
         sta p1+1
         rts
 .export cwd_ptr
@@ -1364,13 +1378,20 @@ build_path:
         cmp #'/'
         beq @abs
         jsr cwd_ptr
+        php
+        sei
+        lda #MAP_RAM
+        sta $01
         ldy #0
 @cc:    lda (p1),y
         sta pbuf,y
         beq @ce
         iny
         bne @cc
-@ce:    sty pb_len
+@ce:    lda #MAP_KERNAL
+        sta $01
+        plp
+        sty pb_len
         cpy #1
         bne @src
         dec pb_len          ; "/" -> empty, components add "/x"
@@ -1454,6 +1475,10 @@ build_path:
 sys_getcwd:
         sta tmp2
         jsr cwd_ptr
+        php
+        sei
+        lda #MAP_RAM
+        sta $01
         ldy #0
 @l:     cpy tmp2
         bcs @big
@@ -1462,10 +1487,16 @@ sys_getcwd:
         beq @d
         iny
         bne @l
-@big:   lda #EINVAL
+@big:   lda #MAP_KERNAL
+        sta $01
+        plp
+        lda #EINVAL
         sec
         rts
-@d:     clc
+@d:     lda #MAP_KERNAL
+        sta $01
+        plp
+        clc
         rts
 
 ; stat(r0 = path, r1 = buf[8]): type nlink size(3) ino dev major

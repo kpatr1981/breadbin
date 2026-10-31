@@ -10,7 +10,7 @@
 .include "../../include/breadbin.inc"
 .import argn, print
 
-TEXTMAX = 12288
+TEXTMAX = 8192
 ROWS    = 24
 COLS    = 39
 

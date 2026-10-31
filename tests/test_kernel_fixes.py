@@ -73,6 +73,17 @@ class KernelFixes(unittest.TestCase):
     def test_an_argument_of_255_characters_is_too_long(self):
         self.assertEqual(self.run_("/test/bigarg"), "ok")
 
+    def test_exec_replaces_the_program_or_fails_cleanly(self):
+        self.assertEqual(self.run_("/test/execfail"), "ok")
+
+    def test_rename_of_a_directory_onto_a_file(self):
+        self.run_("mkdir /home/rd")
+        self.run_("echo x > /home/rf")
+        self.assertIn("not a directory", self.run_("mv /home/rd /home/rf"))
+        self.assertIn("rd", self.run_("ls /home").split())
+        self.run_("rmdir /home/rd")
+        self.run_("rm /home/rf")
+
     def test_brk_kills_only_the_process(self):
         self.run_("/test/brk", timeout=30)
         self.assertEqual(self.run_("echo alive", timeout=30), "alive")

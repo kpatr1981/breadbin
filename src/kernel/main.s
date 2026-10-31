@@ -78,7 +78,7 @@ stub_copy:                  ; copy X pages ($fb) -> ($fd)
 
 ; ---------------------------------------------------------------------
 .segment "RODATA"
-banner: .byte "breadbin 0.3", 10
+banner: .byte "breadbin 0.4", 10
         .byte "unix-like os by kpatronas@gmail.com", 10, 0
 s_mem:  .byte "memory: ", 0
 s_kb:   .byte " pages free", 10, 0

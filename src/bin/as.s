@@ -22,7 +22,6 @@ tq   = $27
 
 NSYM   = 180
 SYMSZ  = 18             ; name[15] value[2] flags
-OBMAX  = 6144
 RMAX   = 768
 F_DEF  = 1
 F_REL  = 2
@@ -54,9 +53,11 @@ idx:    .res 1
 srcp:   .res 2
 outp:   .res 2
 fd:     .res 1
+ofd:    .res 1          ; the output file, written during pass 2
+olen:   .res 1          ; bytes waiting in obuf
 hdr:    .res 9
 symtab: .res NSYM*SYMSZ
-obuf:   .res OBMAX
+obuf:   .res 256
 rbuf:   .res RMAX*2
 
 .segment "CODE"
@@ -83,11 +84,23 @@ start:  lda argc
         lda errs
         bne @fail
         jsr clear_seen
-        lda #2
+        jsr open_out        ; pass 1 knows the sizes: the header goes out,
+        lda #2              ; then pass 2 streams the code behind it
         sta pass
         jsr run_pass
+        lda olen
+        beq @flushed
+        jsr flush
+@flushed:
         lda errs
         beq @write
+        lda ofd             ; errors: no half-made program
+        jsr SYS_CLOSE
+        lda outp
+        sta r0
+        lda outp+1
+        sta r0+1
+        jsr SYS_UNLINK
 @fail:  lda #1
         jmp SYS_EXIT
 @write: jsr write_out
@@ -141,7 +154,10 @@ rp_done:
         lda fd
         jmp SYS_CLOSE
 
-write_out:
+; open_out: create the output and write its header. Pass 1 knows the size;
+; the relocation count is only known after pass 2 (forward references are
+; not relocatable until the symbol is), so write_out rewrites the header.
+open_out:
         lda outp
         sta r0
         lda outp+1
@@ -154,7 +170,9 @@ write_out:
         jsr perr
         lda #1
         jmp SYS_EXIT
-@ok:    sta fd
+@ok:    sta ofd
+        lda #0
+        sta olen
         lda #'C'
         sta hdr
         lda #'X'
@@ -175,17 +193,10 @@ write_out:
         lda #<hdr
         ldx #>hdr
         ldy #9
-        jsr wr
-        lda pc
-        sta r1
-        lda pc+1
-        sta r1+1
-        lda #<obuf
-        sta r0
-        lda #>obuf
-        sta r0+1
-        lda fd
-        jsr SYS_WRITE
+        jmp wr
+
+; write_out: after pass 2, the relocation table; close the file
+write_out:
         lda nrel
         asl a
         sta r1
@@ -196,17 +207,57 @@ write_out:
         sta r0
         lda #>rbuf
         sta r0+1
-        lda fd
+        lda ofd
         jsr SYS_WRITE
-        lda fd
+        lda ofd
+        jsr SYS_CLOSE
+        ; the header again, with the relocation count: opened for writing
+        ; without O_TRUNC, the file keeps its contents and the write lands
+        ; on its first 9 bytes
+        lda outp
+        sta r0
+        lda outp+1
+        sta r0+1
+        lda #O_WRONLY
+        jsr SYS_OPEN
+        bcs @r
+        sta ofd
+        lda nrel
+        sta hdr+7
+        lda nrel+1
+        sta hdr+8
+        lda #<hdr
+        ldx #>hdr
+        ldy #9
+        jsr wr
+        lda ofd
         jmp SYS_CLOSE
+@r:     rts
 wr:     sta r0
         stx r0+1
         sty r1
         lda #0
         sta r1+1
-        lda fd
+        lda ofd
         jmp SYS_WRITE
+
+; flush: obuf (olen bytes, 0 = 256) to the output
+flush:  lda #<obuf
+        sta r0
+        lda #>obuf
+        sta r0+1
+        lda olen
+        sta r1
+        lda #0
+        sta r1+1
+        lda olen
+        bne @w
+        inc r1+1
+@w:     lda ofd
+        jsr SYS_WRITE
+        lda #0
+        sta olen
+        rts
 
 ; readline: getc -> lbuf, lowercased outside quotes; carry set at EOF
 readline:
@@ -689,27 +740,15 @@ expect_rp:
 @b:     jmp bad_mode
 
 ; ---- output ----
+; emit: A = the next byte of the program (pass 2 writes it, through obuf)
 emit:   ldx pass
         cpx #2
         bne @inc
-        pha
-        lda pc+1
-        cmp #>OBMAX
-        bcc @ok
-        pla
-        lda #<e_big
-        ldx #>e_big
-        jmp error
-@ok:    lda #<obuf
-        clc
-        adc pc
-        sta obp
-        lda #>obuf
-        adc pc+1
-        sta obp+1
-        pla
-        ldy #0
-        sta (obp),y
+        ldx olen
+        sta obuf,x
+        inc olen
+        bne @inc
+        jsr flush           ; 256 bytes: out they go
 @inc:   inc pc
         bne @r
         inc pc+1
@@ -1345,6 +1384,7 @@ builtins:
         SYM "sys_errstr", SYS_ERRSTR
         SYM "sys_opendie", SYS_OPENDIE
         SYM "sys_basename", SYS_BASENAME
+        SYM "sys_exec", SYS_EXEC
         SYM "r0", r0
         SYM "r1", r1
         SYM "r2", r2

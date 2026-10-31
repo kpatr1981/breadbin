@@ -67,7 +67,7 @@ hello, world! (assembled on a c64)
 | `$0030–$003F` | used by the user library (`lp1` `$30`, `lp2` `$32`, `lp3` `$34`, scratch `$36–$39`, `dec_str`'s digits `$3A–$3F`); free if you don't call it |
 | `$0040–$00FF` | kernel: don't touch |
 | `$0100–$01FF` | the stack, shared by all processes: you get up to about 130 bytes of it |
-| `$0800–$7CFF` | the user pool: your program is loaded somewhere in here |
+| `$0800–$7EFF` | the user pool: your program is loaded somewhere in here |
 | `$8000–$CEFF` | the kernel |
 | `$CF00–$CFFF` | the system call jump table |
 | `$D000–$DFFF` | I/O |
@@ -127,6 +127,7 @@ Every system call is a `jsr` into the jump table at `$CF00`. Its addresses are s
 |---|---|---|---|
 | `SYS_EXIT` | A = code | never returns | closes your files, wakes your parent |
 | `SYS_SPAWN` | r0 = path, r1 = argv (or 0), A = stdin fd, X = stdout fd, Y = flags | A = pid | runs a program as a child; stderr is inherited. Flags: `SP_BG` (background job), `SP_IGNINT` (ignore RUN/STOP) |
+| `SYS_EXEC` | r0 = path, r1 = argv | | this process becomes that program: same pid, parent, job, flags, descriptors and directory. Returns only on an error (the old program is untouched then) |
 | `SYS_WAIT` | A = pid or `$FF` (any child), X = flags | A = pid, X = exit code | `W_NOHANG`: don't block (A = 0 if nothing finished). `W_UNTRACED`: also return a child that **stopped** (X = `WSTOPPED`) |
 | `SYS_KILL` | A = pid, X = signal | | signal 0 only checks that the pid exists. pid 1 (init) can't be killed |
 | `SYS_FG` | A = pid | | makes a job a foreground job and continues it (the shell's `fg`) |
@@ -177,7 +178,7 @@ Every system call is a `jsr` into the jump table at `$CF00`. Its addresses are s
 
 ## Processes, signals and job control
 
-`SYS_SPAWN` starts a child and `SYS_WAIT` collects its exit code, like `fork`+`exec` and `waitpid` rolled into two calls. A child keeps its process-table slot as a zombie until it is waited for, so always wait for your children.
+`SYS_SPAWN` starts a child and `SYS_WAIT` collects its exit code, like `fork`+`exec` and `waitpid` rolled into two calls; `SYS_EXEC` is the plain `exec`, for a program that only hands over to another (login becomes the shell this way). A child keeps its process-table slot as a zombie until it is waited for, so always wait for your children.
 
 ```asm
         lda #<path              ; run "ls -l" with our stdin/stdout
@@ -288,7 +289,7 @@ Most classic text tools (`rev`, `tr`, `uniq`, `nl`, `tee`, `cut`, `tail`, `sort`
 2. **Read bytes with `getc`**, which buffers 256 bytes per system call. Calling `SYS_READ` for every byte is slow.
 3. **Write with `putc`/`print`.** Each call is a system call, so for large output collect a line in a buffer and `SYS_WRITE` it at once.
 4. **Errors go to fd 2** via `perr`. Exit 0 on success and 1 on error.
-5. **Size buffers in BSS.** Every page you reserve is memory another process can't have. The pool is 29 KB for everything that is running.
+5. **Size buffers in BSS.** Every page you reserve is memory another process can't have. The pool is 30 KB for everything that is running.
 6. **Stay small on the stack.** Use BSS for anything bigger than a few bytes.
 
 [`docs/examples/rev.s`](examples/rev.s) is a complete port of `rev`: about 60 lines, and 1.4 KB as an executable. Copy it to `src/bin/rev.s`, run `make`, and:
@@ -312,7 +313,7 @@ Things that need more thought on a C64:
 | | |
 |---|---|
 | Processes | 12 (init, login and the shell use 3) |
-| Memory for programs | 29 KB pool, in 256-byte pages |
+| Memory for programs | 30 KB pool, in 256-byte pages |
 | Stack per process | about 130 bytes |
 | Open files | 8 per process, 24 in total |
 | Pipes | 4, 256 bytes each |
