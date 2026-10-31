@@ -324,6 +324,8 @@ to_ascii:
         beq @bar
         cmp #$a9            ; shift+pound: where emulators put a PC's '|'
         beq @bar
+        cmp #$a4            ; the underscore graphic: how '_' is printed, and
+        beq @under          ; where emulators put a PC's '_'
         cmp #$c1
         bcc @none
         cmp #$db

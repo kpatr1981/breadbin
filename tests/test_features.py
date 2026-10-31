@@ -111,6 +111,17 @@ class Shell(unittest.TestCase):
         self.assertEqual(self.run_("cat /nope 2>&1 | wc").split()[0], "1")
         self.run_("rm /home/err")
 
+    def test_pipe_and_underscore_keys(self):
+        # a C64 types | as shift+minus ($dd); VICE's symbolic keyboard mapping
+        # sends a PC's | as shift+pound ($a9) and _ as the underscore graphic
+        # ($a4): the console must take them all
+        self.v.type("clear\n")
+        self.v.wait_for("$")
+        self.v._cmd("keybuf echo a\\xa4b \\xa9 wc\\x0d")
+        self.v._cmd("x")
+        s = self.v.wait_for(" 1 ", after="$ echo a_b | wc")
+        self.assertIn("1      1      4", s)
+
     def test_history(self):
         def keys(*ks):
             for k in ks:

@@ -9,6 +9,6 @@ code:   basic as
 disks:  mount umount format
 shell:  a | b  > f  >> f  < f  cmd &
         a ; b  *.bas  cd  exit
-keys:   | is shift + -
+keys:   | is shift + - (in vice: the | key)
         run/stop interrupts a command
         ctrl-z stops it: fg, bg resume

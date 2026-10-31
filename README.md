@@ -122,7 +122,7 @@ theme c64
 
 At the `login:` prompt, type `root` or `user`; neither has a password until you set one with `passwd`.
 
-On a C64 keyboard, `|` is **SHIFT + `-`**, and RUN/STOP interrupts the running command.
+On a C64 keyboard, `|` is **SHIFT + `-`**, and RUN/STOP interrupts the running command. In VICE that key combination only holds with the *positional* keyboard mapping; with the *symbolic* mapping (the default on most builds) press your keyboard's own `|` key, and `_` for an underscore.
 
 ## Disks
 
