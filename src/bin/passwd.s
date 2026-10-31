@@ -230,7 +230,13 @@ read_secret:
         lda key
         cmp #K_RET
         beq @d
-        cmp #$20
+        cmp #K_DEL
+        bne @ch
+        cpx #0
+        beq @l
+        dex
+        jmp @l
+@ch:    cmp #$20
         bcc @l
         cpx #30
         bcs @l

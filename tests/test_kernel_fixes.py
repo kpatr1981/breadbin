@@ -70,6 +70,9 @@ class KernelFixes(unittest.TestCase):
     def test_zero_length_pipe_read(self):
         self.assertEqual(self.run_("/test/pipe0"), "ok")
 
+    def test_an_argument_of_255_characters_is_too_long(self):
+        self.assertEqual(self.run_("/test/bigarg"), "ok")
+
     def test_brk_kills_only_the_process(self):
         self.run_("/test/brk", timeout=30)
         self.assertEqual(self.run_("echo alive", timeout=30), "alive")

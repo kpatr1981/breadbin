@@ -113,6 +113,10 @@ read_secret:
         cpx #0
         beq @l
         dex
+        stx n
+        lda #K_DEL          ; take its '*' back
+        jsr putc
+        ldx n
         jmp @l
 @ch:    cmp #$20
         bcc @l

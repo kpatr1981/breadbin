@@ -2,7 +2,7 @@
 .include "k.inc"
 
 .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__, __RODATA_SIZE__, __DATA_SIZE__
-.import __JUMPTAB_LOAD__, __JUMPTAB_RUN__, __BSS_RUN__, __BSS_SIZE__
+.import __JUMPTAB_LOAD__, __JUMPTAB_RUN__, __BSS_RUN__, __BSS_SIZE__, __ZP_SIZE__
 
 .segment "ZEROPAGE"
 cur:          .res 1    ; current process slot, $FF = none
@@ -121,8 +121,8 @@ kmain:
         dec p2+1
 @zl:    dec p2
         jmp @z
-@zd:    lda #0
-        ldx #$1f
+@zd:    lda #0              ; and the kernel's zero page (ZP in kernel.cfg:
+        ldx #<(__ZP_SIZE__-1) ; $40-$8F, BASIC's, which is switched out)
 @zz:    sta $40,x
         dex
         bpl @zz

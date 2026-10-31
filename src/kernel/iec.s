@@ -287,6 +287,7 @@ ie_release:
 ; them there for many jiffies. Count each jiffy that passes, as the IRQ
 ; would have (reading the timer flag acknowledges it, so the IRQ doesn't
 ; run for it). Keeps X and Y.
+.export ie_tick
 ie_tick:
         lda $dc0d
         lsr a               ; bit 0: CIA 1 timer A ran out

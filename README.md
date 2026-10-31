@@ -91,8 +91,8 @@ Then type `LOAD"*",8,1` and `RUN`, as in VICE.
 
 Things to know:
 
-- **No cartridges.** The kernel runs at `$8000`, where a cartridge maps its ROM, so Action Replay, Final Cartridge, EasyFlash and the like must be removed or switched off. An REU or a GeoRAM is fine: they only use the I/O area.
-- **Disk access is slow.** Breadbin has its own serial bus driver at the standard 1541 speed, with no fast loader, so loading commands from a floppy takes seconds, and the system pauses while the drive works. JiffyDOS doesn't help, but it doesn't get in the way either.
+- **No cartridges.** The kernel runs at `$7800–$CFFF`, over the area where a cartridge maps its ROM, so Action Replay, Final Cartridge, EasyFlash and the like must be removed or switched off. An REU or a GeoRAM is fine: they only use the I/O area.
+- **Disk access is slowish.** Breadbin has its own serial bus driver, and it loads a small routine into the 1541 that sends sectors about twice as fast as the standard protocol (the disk's rotation is the limit after that). Loading a command from a floppy still takes a second or two, and the system pauses while the drive works. A drive that can't run 1541 code (SD2IEC) gets the standard protocol. JiffyDOS doesn't help, but it doesn't get in the way either. With an REU of 256 KB or more, every block read from drive 8 is kept in the REU, so the second load of a command is instant.
 - **Handled:** PAL and NTSC, C64s on DC power supplies (whose TOD clock never ticks: the kernel keeps time itself), and a C128 in C64 mode with a 1541 or 1571.
 - **Not supported:** the 1581 and 40-track disks.
 
@@ -144,7 +144,7 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`, `fg`, `bg`. CTRL-Z stops the fore
 
 | Path | What |
 |------|------|
-| `src/kernel/` | the kernel (ca65): `proc.s` scheduler, IRQ, signals · `jtab.s` syscall table at `$CF00` · `exec.s` loader · `file.s` fds, pipes, file syscalls · `fs.s` c64fs · `blk.s` 1541/REU block cache · `con.s` console · `mem.s` page allocator |
+| `src/kernel/` | the kernel (ca65): `proc.s` scheduler, IRQ, signals · `jtab.s` syscall table at `$CF00` · `exec.s` loader · `file.s` fds, pipes, file syscalls · `fs.s` c64fs · `blk.s` block cache, 1541 and REU · `iec.s` serial bus driver · `drive.s` the sector-sending code that runs in the 1541 · `cbm.s` CBM DOS disks and mount · `con.s` console · `mem.s` page allocator |
 | `src/bin/` | user programs |
 | `src/lib/` | the user library linked into programs |
 | `include/breadbin.inc` | the system-call interface for programs |

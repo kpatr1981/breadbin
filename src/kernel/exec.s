@@ -345,10 +345,11 @@ measure_args:
         beq @se
         iny
         bne @s
-        lda #E2BIG
+@big:   lda #E2BIG
         sec
         rts
 @se:    iny                 ; include NUL
+        beq @big            ; (255 characters: 256 bytes, not 0)
         tya
         clc
         adc argsz
@@ -466,10 +467,10 @@ copy_args:
 setup_proc:
 @np:    lda next_pid        ; the next pid no live or zombie process holds
         inc next_pid
-        bne @p
-        ldx #2
-        stx next_pid
-@p:     jsr find_pid
+        beq @np             ; never 255 (it means "any child" to wait) ...
+        tax
+        beq @np             ; ... nor 0
+        jsr find_pid
         bcc @np
         ldx sp_slot
         sta p_pid,x

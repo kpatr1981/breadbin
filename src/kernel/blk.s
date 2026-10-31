@@ -12,6 +12,7 @@
 ; device when it is evicted, on bflush_all (close of a written file, sync,
 ; umount), or by bflush_due once it has been changed for 2 seconds.
 .include "k.inc"
+.import drv_code, drv_size, DRV_ADDR, ie_tick
 
 
 REU_STATUS = $df00
@@ -71,6 +72,16 @@ dc_base: .res 1         ; ... from this bank on (683 blocks: 3 banks)
 dc_have: .res 86        ; one bit per block: it is in the REU copy
 dc_hi:   .res 1
 DC_BANKS = 3
+fl_up:   .res NDEV      ; fast read: the drive code is in the drive
+fl_bad:  .res NDEV      ; fast read: this drive can't (use the slow way)
+cw_want: .res 1
+cw_n:    .res 2
+cw_t:    .res 1
+fr_on:   .res 1
+fr_off:  .res 1
+fr_val:  .res 1
+up_off:  .res 1
+up_n:    .res 1
 
 .export bwrite, bdirty, buf_idx_ptr, bflush_due, sys_sync, rd_banks
 
@@ -140,6 +151,25 @@ iec_open:
         jsr iecunlisten
         bcs @nodev
         ldx tmp2
+        lda #0
+        sta fl_up,x
+        sta fl_bad,x
+        lda dev_drive,x
+        ldy #$f0+2
+        jsr ieclisten
+        bcs @nodev
+        lda #'#'            ; channel 2 gets buffer 1: buffers 2 and 3 stay
+        jsr iecout          ; free for the fast read code
+        lda #'1'
+        jsr iecout
+        jsr iecunlisten
+        bcs @nodev
+        lda tmp2
+        jsr cur_dev_set
+        jsr cmd_status
+        bcc @ok
+        ldx tmp2            ; buffer 1 is taken: any buffer, and no fast reads
+        inc fl_bad,x
         lda dev_drive,x
         ldy #$f0+2
         jsr ieclisten
@@ -148,6 +178,7 @@ iec_open:
         jsr iecout
         jsr iecunlisten
         bcs @nodev
+@ok:    ldx tmp2
         clc
         rts
 @nodev: ldx tmp2
@@ -668,7 +699,10 @@ cmd_status:
 
 iec_read:
         jsr blk_to_ts
-        lda #'1'
+        jsr fast_read
+        bcs @slow
+        rts
+@slow:  lda #'1'
         jsr cmd_us
         jsr cmd_send
         bcs @e
@@ -721,6 +755,216 @@ iec_write:
         jmp cmd_status
 @e:     sec
         rts
+
+; ---- fast read (the drive code in drive.s) ----
+; fast_read: sector trk/sct of drive rq_dev into (bp). Carry set if it
+; can't, or the read failed: the caller reads the slow way (and reports).
+fast_read:
+        ldx rq_dev
+        lda dev_present,x
+        beq @no             ; (raw diskio: unmounted drives read slowly)
+        lda dev_type,x
+        bne @no
+        lda fl_bad,x
+        bne @no
+        lda fl_up,x
+        bne @go
+        jsr drv_upload
+        bcs @bad
+        ldx rq_dev
+        inc fl_up,x
+@go:    ldx #2              ; "M-E" lo hi track sector
+@m:     lda s_me,x
+        sta cmdbuf,x
+        dex
+        bpl @m
+        lda #<DRV_ADDR
+        sta cmdbuf+3
+        lda #>DRV_ADDR
+        sta cmdbuf+4
+        lda trk
+        sta cmdbuf+5
+        lda sct
+        sta cmdbuf+6
+        lda #7
+        sta cmdlen
+        jsr cmd_send
+        bcs @bad
+        lda #0              ; the code runs (CLK low) within a second ...
+        ldx #60
+        ldy #0
+        jsr cw
+        bcs @bad
+        lda #$40            ; ... and is done (CLK released) within 20
+        ldx #<1200
+        ldy #>1200
+        jsr cw
+        bcs @bad
+        bit $dd00
+        bpl @err            ; DATA low: the drive could not read it
+        jmp fr_recv
+@err:   lda $dd00           ; pull CLK and release it: status seen
+        and #$07
+        ora #$10
+        sta $dd00
+        ldx #20
+@d:     dex
+        bne @d
+        and #$07
+        sta $dd00
+        sec
+        rts
+@bad:   ldx rq_dev          ; no drive code here (or it hangs): never again
+        inc fl_bad,x
+@no:    sec
+        rts
+
+; cw: A = $40 (until CLK is released) or 0 (until it is pulled), for at
+; most X/Y jiffies; carry set on the timeout
+cw:     sta cw_want
+        stx cw_n
+        sty cw_n+1
+        lda ticks
+        sta cw_t
+@l:     lda $dd00
+        and #$40
+        cmp cw_want
+        beq @ok
+        lda ticks
+        cmp cw_t
+        beq @l
+        sta cw_t
+        lda cw_n
+        bne @d
+        lda cw_n+1
+        beq @to
+        dec cw_n+1
+@d:     dec cw_n
+        jmp @l
+@ok:    clc
+        rts
+@to:    sec
+        rts
+
+; fr_recv: clock the 256 bytes in: pull CLK, wait for the drive to put a
+; bit on DATA, read it; release CLK, the next bit. The drive answers each
+; edge within ~21 us, so the C64 only ever waits longer than it must (a
+; badline can't make it read early). A last pulse tells the drive the final
+; bit has been read (it keeps DATA until then). Carry clear.
+fr_recv:
+        sei
+        lda $dd00
+        and #$07
+        sta fr_off
+        ora #$10
+        sta fr_on
+        ldy #0
+@byte:  jsr fr_wait
+        jsr fr_wait
+        jsr ie_tick         ; the clock keeps time; and the drive fetches
+        nop                 ; the next byte meanwhile (~66 us)
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        ldx #4
+@pair:  lda fr_on
+        sta $dd00
+        jsr fr_wait
+        lda $dd00
+        asl a
+        rol fr_val
+        lda fr_off
+        sta $dd00
+        jsr fr_wait
+        lda $dd00
+        asl a
+        rol fr_val
+        dex
+        bne @pair
+        lda fr_val
+        sta (bp),y
+        iny
+        bne @byte
+        lda fr_on           ; one more pulse: the drive holds the last bit
+        sta $dd00           ; until it sees it
+        jsr fr_wait
+        lda fr_off
+        sta $dd00
+        cli
+        clc
+        rts
+fr_wait:                    ; EXPERIMENT: 40 cycles
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        rts
+
+; drv_upload: the drive code -> drive memory DRV_ADDR, 32 bytes per M-W
+drv_upload:
+        lda #0
+        sta up_off
+@c:     ldx #2              ; "M-W" lo hi n data
+@m:     lda s_mw,x
+        sta cmdbuf,x
+        dex
+        bpl @m
+        lda #<DRV_ADDR
+        clc
+        adc up_off
+        sta cmdbuf+3
+        lda #>DRV_ADDR
+        adc #0
+        sta cmdbuf+4
+        lda #<drv_size
+        sec
+        sbc up_off
+        cmp #32
+        bcc @n
+        lda #32
+@n:     sta up_n
+        sta cmdbuf+5
+        ldx up_off
+        ldy #0
+@d:     lda drv_code,x
+        sta cmdbuf+6,y
+        inx
+        iny
+        cpy up_n
+        bne @d
+        tya
+        clc
+        adc #6
+        sta cmdlen
+        jsr cmd_send
+        bcs @r
+        lda up_off
+        clc
+        adc up_n
+        sta up_off
+        cmp #<drv_size
+        bcc @c
+        clc
+@r:     rts
+
+s_me:   .byte "M-E"
+s_mw:   .byte "M-W"
 
 ; ---- REU ----
 reu_setup:                  ; rq_* and bp -> REU registers

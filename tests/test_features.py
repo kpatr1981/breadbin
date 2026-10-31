@@ -228,5 +228,24 @@ class DriveCopyInREU(unittest.TestCase):
         self.assertEqual(host_cat(img, "/home/x"), host_cat(img, "/bin/as"))
 
 
+class FastLoader(unittest.TestCase):
+    """Drive 8 sends sectors with Breadbin's drive code, not the KERNAL protocol."""
+
+    def test_reads_are_faster(self):
+        img = copy_image("fast")
+        with Vice(img, extra=["-drive9type", "1541", "-9", copy_image("fast9")]) as v:
+            v.wait_shell()                              # (a second drive on the bus)
+            v.run("cd /bin")
+            t = int(v.run("/test/readtime as basic edit", timeout=600))
+            print("\nreadtime without an REU: %d jiffies (0.3: 3262)" % t)
+            # 0.3 (KERNAL-speed transfer): 3262; drive code: ~1750. The rest is
+            # disk rotation: a file's blocks sit on consecutive sectors
+            self.assertLess(t, 2200)
+            v.run("cp as /home/x")
+            self.assertEqual(v.run("wc /home/x"), v.run("wc as").replace(" as", " /home/x"))
+            v.run("sync")
+        self.assertEqual(host_cat(img, "/home/x"), host_cat(img, "/bin/as"))
+
+
 if __name__ == "__main__":
     unittest.main()
