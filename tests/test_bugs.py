@@ -148,10 +148,10 @@ class SmallRAMDisk(unittest.TestCase):
         with Vice(copy_image("reu128"), extra=["-reu", "-reusize", "128"]) as v:
             v.wait_shell()
             v.run("cd /tmp")
-            v.run("cp /bin/as a")
-            v.run("cat a a a a > b")
+            v.run("cp /bin/as a")                # 23 blocks
+            v.run("cat a a a a a a a a > b")
             for f in "cde":
-                v.run("cat b a > " + f)          # 130 blocks each: the last one fills /tmp
+                v.run("cat b a > " + f)          # 207 blocks each: the last one fills /tmp
             before = tmp_inodes(v.run("df"))
             self.assertIn("no space", v.run("mkdir x"))
             self.assertEqual(tmp_inodes(v.run("df")), before)

@@ -196,10 +196,10 @@ class BigRAMDisk(unittest.TestCase):
             tmp = next(l for l in v.run("df").splitlines() if l.endswith("/tmp"))
             self.assertEqual(tmp.split()[0], "7424", tmp)
             v.run("cd /tmp")
-            v.run("cp /bin/as a")
-            v.run("cat a a a a > b")
+            v.run("cp /bin/as a")                       # 23 blocks
+            v.run("cat a a a a a a a a > b")
             v.run("cat b a > c")
-            for i in range(16):                         # 16 x 130 blocks: past block 2048
+            for i in range(16):                         # 16 x 207 blocks: past block 2048
                 v.run("cp c c%d" % i, timeout=180)
             used = int(next(l for l in v.run("df").splitlines() if l.endswith("/tmp")).split()[1])
             self.assertGreater(used, 2200)
