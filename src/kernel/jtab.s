@@ -7,6 +7,10 @@
 .include "k.inc"
 .import sys_isatty, sys_conmode, sys_getuid, sys_setuid, sys_mount, sys_umount, sys_mntinfo, sys_diskio, sys_fg
 .import sys_sync, bflush_due
+.import ul_print, ul_eprint, ul_fprint, ul_putc, ul_eputc, ul_fputc
+.import ul_newline, ul_print_dec, ul_print_dec_w, ul_print_hex, ul_dec_str
+.import ul_parse_dec, ul_strlen, ul_strcmp, ul_argn, ul_perr, ul_errstr
+.import ul_open_or_die, ul_basename
 
 NSYS = 33
 STUBSZ = 8
@@ -15,6 +19,26 @@ STUBSZ = 8
 .repeat NSYS, I
         jmp stubs + I*STUBSZ
 .endrep
+; the user library (ulib.s): straight jumps, in the order of breadbin.inc
+        jmp ul_print        ; 33
+        jmp ul_eprint
+        jmp ul_fprint
+        jmp ul_putc
+        jmp ul_eputc
+        jmp ul_fputc
+        jmp ul_newline
+        jmp ul_print_dec    ; 40
+        jmp ul_print_dec_w
+        jmp ul_print_hex
+        jmp ul_dec_str
+        jmp ul_parse_dec
+        jmp ul_strlen
+        jmp ul_strcmp
+        jmp ul_argn
+        jmp ul_perr         ; 48
+        jmp ul_errstr
+        jmp ul_open_or_die
+        jmp ul_basename
 
 .segment "CODE"
 stubs:

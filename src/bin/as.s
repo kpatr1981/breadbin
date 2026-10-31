@@ -8,7 +8,8 @@
 ;   .byte 1, "text", >addr      .word expr, ...      .res count
 ; Operands: #imm  #<expr  #>expr  zp/abs  ,x ,y  (zp,x)  (zp),y  (abs)
 ; Expressions: numbers ($hex %bin dec 'c'), labels, * (pc), + and -.
-; System names are predefined: sys_exit .. sys_sync, r0 r1 r2,
+; System names are predefined: sys_exit .. sys_sync, the library entries
+; sys_print .. sys_basename, r0 r1 r2,
 ; argv argc, o_rdonly o_wronly o_rdwr o_creat o_trunc o_append.
 ; Output is a relocatable CX file: run it like any other command.
 .include "../../include/breadbin.inc"
@@ -1325,6 +1326,25 @@ builtins:
         SYM "sys_diskio", SYS_DISKIO
         SYM "sys_fg", SYS_FG
         SYM "sys_sync", SYS_SYNC
+        SYM "sys_print", SYS_PRINT
+        SYM "sys_eprint", SYS_EPRINT
+        SYM "sys_fprint", SYS_FPRINT
+        SYM "sys_putc", SYS_PUTC
+        SYM "sys_eputc", SYS_EPUTC
+        SYM "sys_fputc", SYS_FPUTC
+        SYM "sys_newline", SYS_NEWLINE
+        SYM "sys_printdec", SYS_PRINTDEC
+        SYM "sys_printdecw", SYS_PRINTDECW
+        SYM "sys_printhex", SYS_PRINTHEX
+        SYM "sys_decstr", SYS_DECSTR
+        SYM "sys_parsedec", SYS_PARSEDEC
+        SYM "sys_strlen", SYS_STRLEN
+        SYM "sys_strcmp", SYS_STRCMP
+        SYM "sys_argn", SYS_ARGN
+        SYM "sys_perr", SYS_PERR
+        SYM "sys_errstr", SYS_ERRSTR
+        SYM "sys_opendie", SYS_OPENDIE
+        SYM "sys_basename", SYS_BASENAME
         SYM "r0", r0
         SYM "r1", r1
         SYM "r2", r2

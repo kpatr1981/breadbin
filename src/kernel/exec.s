@@ -551,6 +551,10 @@ setup_proc:
         ; saved context: zero ZP image, then argv/argc/entry
         ldx sp_slot
         jsr slot_save_ptr
+        php
+        sei                 ; the save area is under the KERNAL ROM
+        lda #MAP_RAM
+        sta $01
         ldy #0
         tya
 @z:     sta (p3),y
@@ -587,6 +591,9 @@ setup_proc:
         iny
         lda #>(proc_entry-1)
         sta (p3),y
+        lda #MAP_KERNAL
+        sta $01
+        plp
         ldx sp_slot
         lda #$fc
         sta p_sp,x

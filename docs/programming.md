@@ -64,10 +64,10 @@ hello, world! (assembled on a c64)
 | `$0020–$0021` | `argv`: pointer to the argument pointer array |
 | `$0022` | `argc` |
 | `$0023–$002F` | **free for your program** (13 bytes) |
-| `$0030–$003F` | used by the user library (`lp1`, `lp2`, `lp3`, `lval`); free if you don't link it |
+| `$0030–$003F` | used by the user library (`lp1` `$30`, `lp2` `$32`, `lp3` `$34`, scratch `$36–$39`, `dec_str`'s digits `$3A–$3F`); free if you don't call it |
 | `$0040–$00FF` | kernel: don't touch |
 | `$0100–$01FF` | the stack, shared by all processes: you get up to about 130 bytes of it |
-| `$0800–$7FFF` | the user pool: your program is loaded somewhere in here |
+| `$0800–$7CFF` | the user pool: your program is loaded somewhere in here |
 | `$8000–$CEFF` | the kernel |
 | `$CF00–$CFFF` | the system call jump table |
 | `$D000–$DFFF` | I/O |
@@ -216,7 +216,7 @@ A stopped process is not scheduled. `ps` shows it as `T`. The shell commands `fg
 
 ## The user library
 
-Link `build/lib/breadbin.lib` (the Makefile does this) and `.import` what you need. Strings are NUL-terminated and addresses are passed in A (low) / X (high).
+The library lives in the kernel, right after the system calls in the jump table (`SYS_PRINT` … `SYS_BASENAME` in `breadbin.inc`), so it costs your program nothing. Link `build/lib/breadbin.lib` (the Makefile does this) and `.import` what you need; the names below are those entries. From `as` on the C64 call them as `sys_print`, `sys_perr` and so on. These are not system calls: they run as part of your program and call the real system calls, so they are preemptible and a signal can end them like any of your code. Strings are NUL-terminated and addresses are passed in A (low) / X (high).
 
 | Routine | In | Out |
 |---|---|---|
@@ -228,20 +228,21 @@ Link `build/lib/breadbin.lib` (the Makefile does this) and `.import` what you ne
 | `print_dec` | A/X = 16-bit number | decimal on stdout |
 | `print_dec_w` | A/X = number, Y = width | right-aligned decimal |
 | `print_hex` | A | two hex digits |
+| `dec_str` | A/X = number | A/X = the digits (NUL-terminated, in zero page), Y = their count |
 | `parse_dec` | A/X = string | A/X = value; carry set if not a number |
 | `strlen` | A/X = string | A = Y = length |
 | `strcmp` | `lp1`, `lp2` = strings | Z set if equal |
 | `argn` | A = index | A/X = argv[index]; carry set if out of range |
 | `basename` | A/X = path | A/X = the part after the last `/` |
 | `set_input` | A = fd | selects the fd that `getc` reads |
-| `getc` | | A = next byte (buffered 256 at a time); carry set at end of file |
+| `getc` | | A = next byte (buffered 256 at a time); carry set at end of file. `getc` and `set_input` are the one part linked into your program: a 256-byte buffer |
 | `open_or_die` | A/X = path, Y = flags | A = fd; on error prints `prog: path: message` and exits 1 |
 | `perr` | A = errno, X/Y = extra string (or 0/0) | prints `prog: extra: message` to stderr |
 | `errstr` | A = errno | A/X = the message text |
 | `exit` | A = code | |
 | `pw_find_uid` / `pw_find_name` | A = uid / A/X = name | look up `/etc/passwd` (`pw_name`, `pw_uid`, `pw_home`) |
 
-The library uses zero page `$30–$3F` and about 270 bytes of BSS.
+The library uses zero page `$30–$3F`, which is saved per process like the rest of your zero page. `dec_str` returns a pointer into `$3A–$3F`, so copy or print the digits before the next library call.
 
 ## Building: ca65 on your computer
 
@@ -287,7 +288,7 @@ Most classic text tools (`rev`, `tr`, `uniq`, `nl`, `tee`, `cut`, `tail`, `sort`
 2. **Read bytes with `getc`**, which buffers 256 bytes per system call. Calling `SYS_READ` for every byte is slow.
 3. **Write with `putc`/`print`.** Each call is a system call, so for large output collect a line in a buffer and `SYS_WRITE` it at once.
 4. **Errors go to fd 2** via `perr`. Exit 0 on success and 1 on error.
-5. **Size buffers in BSS.** Every page you reserve is memory another process can't have. The pool is 30 KB for everything that is running.
+5. **Size buffers in BSS.** Every page you reserve is memory another process can't have. The pool is 29 KB for everything that is running.
 6. **Stay small on the stack.** Use BSS for anything bigger than a few bytes.
 
 [`docs/examples/rev.s`](examples/rev.s) is a complete port of `rev`: about 60 lines, and 1.4 KB as an executable. Copy it to `src/bin/rev.s`, run `make`, and:
@@ -311,7 +312,7 @@ Things that need more thought on a C64:
 | | |
 |---|---|
 | Processes | 12 (init, login and the shell use 3) |
-| Memory for programs | 30 KB pool, in 256-byte pages |
+| Memory for programs | 29 KB pool, in 256-byte pages |
 | Stack per process | about 130 bytes |
 | Open files | 8 per process, 24 in total |
 | Pipes | 4, 256 bytes each |

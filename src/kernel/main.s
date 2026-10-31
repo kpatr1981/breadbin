@@ -61,7 +61,7 @@ stub:
         sta $fe
         ldx #1
         jsr stub_copy
-        lda #$36            ; BASIC out, KERNAL + I/O in
+        lda #MAP_KERNAL     ; BASIC out, KERNAL + I/O in
         sta $01
         jmp kmain
 stub_copy:                  ; copy X pages ($fb) -> ($fd)
@@ -144,6 +144,26 @@ kmain:
         sta $0318
         lda #>nmi_handler
         sta $0319
+        ; the RAM under the KERNAL ROM holds the process save areas. While
+        ; it is switched in (interrupts off) the CPU takes its vectors from
+        ; there: an NMI (RESTORE) goes straight to our handler, which runs
+        ; from RAM; a BRK (a kernel bug) gets the ROM back for the panic
+        lda #MAP_RAM
+        sta $01
+        lda #<nmi_handler
+        sta $fffa
+        lda #>nmi_handler
+        sta $fffb
+        lda #<$fce2         ; RESET
+        sta $fffc
+        lda #>$fce2
+        sta $fffd
+        lda #<rom_irq
+        sta $fffe
+        lda #>rom_irq
+        sta $ffff
+        lda #MAP_KERNAL
+        sta $01
 
         ; TOD clock: 50 Hz mains on PAL machines (the KERNAL leaves the
         ; CIA at 60 Hz, so it ran 17% slow), start it at 00:00:00.0
@@ -246,6 +266,14 @@ nmi_handler:
         tax
         pla
         rti
+
+; rom_irq: IRQ/BRK vector while the KERNAL ROM is switched out (only a BRK
+; can get here: interrupts are off then). Put the ROM back and take the
+; usual entry; A is lost, which only a panic message could miss.
+rom_irq:
+        lda #MAP_KERNAL
+        sta $01
+        jmp $ff48
 
 ; brk_handler: a BRK in a program kills only that process (exit code
 ; 128+4, as for SIGILL); one in the kernel is a kernel bug

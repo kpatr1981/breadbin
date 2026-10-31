@@ -39,6 +39,29 @@ SYS_DISKIO   = SYS_BASE + 3*30
 SYS_FG       = SYS_BASE + 3*31
 SYS_SYNC     = SYS_BASE + 3*32
 
+; The user library is in the jump table too. These entries are not system
+; calls: they run as part of your program (using zero page $30-$3F) and
+; call the system calls above. src/lib/lib.s gives them their short names.
+SYS_PRINT    = SYS_BASE + 3*33  ; A/X = string -> stdout
+SYS_EPRINT   = SYS_BASE + 3*34  ; A/X = string -> stderr
+SYS_FPRINT   = SYS_BASE + 3*35  ; A/X = string, Y = fd
+SYS_PUTC     = SYS_BASE + 3*36  ; A = byte -> stdout
+SYS_EPUTC    = SYS_BASE + 3*37  ; A = byte -> stderr
+SYS_FPUTC    = SYS_BASE + 3*38  ; A = byte, Y = fd
+SYS_NEWLINE  = SYS_BASE + 3*39  ; a 10 to stdout
+SYS_PRINTDEC = SYS_BASE + 3*40  ; A/X = number, decimal to stdout
+SYS_PRINTDECW= SYS_BASE + 3*41  ; A/X = number, Y = width (right aligned)
+SYS_PRINTHEX = SYS_BASE + 3*42  ; A -> two hex digits to stdout
+SYS_DECSTR   = SYS_BASE + 3*43  ; A/X = number -> A/X = digits (at $3a), Y = length
+SYS_PARSEDEC = SYS_BASE + 3*44  ; A/X = string -> A/X = value; carry set if not a number
+SYS_STRLEN   = SYS_BASE + 3*45  ; A/X = string -> A = Y = length
+SYS_STRCMP   = SYS_BASE + 3*46  ; strings at $30 and $32 -> Z set if equal
+SYS_ARGN     = SYS_BASE + 3*47  ; A = index -> A/X = argv[index]; carry set if none
+SYS_PERR     = SYS_BASE + 3*48  ; A = errno, X/Y = extra string or 0/0 -> "prog: extra: message" to stderr
+SYS_ERRSTR   = SYS_BASE + 3*49  ; A = errno -> A/X = message
+SYS_OPENDIE  = SYS_BASE + 3*50  ; A/X = path, Y = flags -> A = fd, or print the error and exit 1
+SYS_BASENAME = SYS_BASE + 3*51  ; A/X = path -> A/X = the part after the last '/'
+
 ; argument registers (zero page, saved per process)
 r0 = $02
 r1 = $04

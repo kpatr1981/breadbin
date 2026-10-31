@@ -31,7 +31,7 @@ p_wk2:    .res MAXPROC
 p_name:   .res MAXPROC*NAMELEN
 p_fd:     .res MAXPROC*NFD
 p_cwd:    .res MAXPROC*CWDLEN
-p_save:   .res MAXPROC*SAVESZ
+; p_save (MAXPROC*SAVESZ) is at P_SAVE, under the KERNAL ROM
 next_pid: .res 1
 new_slot: .res 1
 wk_ch:    .res 1
@@ -59,7 +59,9 @@ proc_init:
         sta next_pid
         rts
 
-; slot_save_ptr: X = slot -> p3 = &p_save[slot*192]. Preserves X.
+; slot_save_ptr: X = slot -> p3 = &p_save[slot*192]. Preserves X. The save
+; areas sit under the KERNAL ROM: switch it out (MAP_RAM, interrupts off)
+; around every access.
 slot_save_ptr:
         txa
         lsr a
@@ -89,10 +91,10 @@ slot_save_ptr:
         sta p3+1
         lda p3
         clc
-        adc #<p_save
+        adc #<P_SAVE
         sta p3
         lda p3+1
-        adc #>p_save
+        adc #>P_SAVE
         sta p3+1
         rts
 
@@ -119,6 +121,8 @@ sched:
         lda tmp2
         sta p_sp,x
         jsr slot_save_ptr
+        lda #MAP_RAM
+        sta $01
         ldy #0
 @zs:    lda $02,y
         sta (p3),y
@@ -132,6 +136,8 @@ sched:
         iny
         cpx #$ff
         bne @ss
+        lda #MAP_KERNAL
+        sta $01
 
 @pick:  ldx cur
         cpx #$ff
@@ -165,6 +171,8 @@ sched:
         lda #SLICE
         sta slice
         jsr slot_save_ptr
+        lda #MAP_RAM
+        sta $01
         ldy #0
 @zr:    lda (p3),y
         sta $0002,y
@@ -180,6 +188,8 @@ sched:
         iny
         cpx #$ff
         bne @sr
+        lda #MAP_KERNAL
+        sta $01
         plp
         rts
 
