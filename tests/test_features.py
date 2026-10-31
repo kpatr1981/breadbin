@@ -247,5 +247,38 @@ class FastLoader(unittest.TestCase):
         self.assertEqual(host_cat(img, "/home/x"), host_cat(img, "/bin/as"))
 
 
+class Tools(unittest.TestCase):
+    """tee, tail and sort."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.v = Vice(copy_image("tools"))
+        cls.v.wait_shell()
+        with open(os.path.join(ROOT, "rootfs", "etc", "help")) as f:
+            cls.help = f.read().splitlines()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.v.close()
+
+    def test_tee(self):
+        counts = self.v.run("wc /etc/help").replace(" /etc/help", "")
+        self.assertEqual(self.v.run("cat /etc/help | tee /home/t1 | wc"), counts)
+        self.assertEqual(self.v.run("wc /home/t1"), counts + " /home/t1")
+        self.assertEqual(self.v.run("echo more | tee -a /home/t1"), "more")
+        self.assertEqual(self.v.run("tail -1 /home/t1"), "more")
+        self.v.run("rm /home/t1")
+
+    def test_tail(self):
+        self.assertEqual(self.v.run("tail -3 /etc/help").splitlines(), self.help[-3:])
+        self.assertEqual(self.v.run("tail /etc/help").splitlines(), self.help[-10:])
+        self.assertEqual(self.v.run("cat /etc/help | tail -2").splitlines(), self.help[-2:])
+
+    def test_sort(self):
+        want = sorted(self.help)
+        self.assertEqual(self.v.run("sort /etc/help").splitlines(), want)
+        self.assertEqual(self.v.run("cat /etc/help | sort -r").splitlines(), want[::-1])
+
+
 if __name__ == "__main__":
     unittest.main()
