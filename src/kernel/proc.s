@@ -7,7 +7,7 @@
 ; returns (plp/rts) into *that* process's call to sched.
 .include "k.inc"
 .import con_raw
-.export sys_fg, tod_soft, sigint_fg, sigtstp_fg
+.export sys_fg, tod_soft, sigint_fg, sigtstp_fg, tod_tick
 
 .segment "BSS"
 p_state:  .res MAXPROC

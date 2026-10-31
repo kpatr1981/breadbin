@@ -15,6 +15,7 @@
 ; acknowledge, $02 read timeout).  X and Y are preserved.  ie_st keeps
 ; every error since the last LISTEN/TALK, and iecunlisten reports them.
 .include "k.inc"
+.import tod_tick
 
 PRA      = $dd00        ; out: bit 3 ATN, 4 CLK, 5 DATA (1 = pull low)
                         ; in:  bit 6 CLK, 7 DATA (1 = released)
@@ -62,7 +63,8 @@ iectalk:
         jsr data_lo
         jsr atn_hi
         jsr clk_hi
-@w:     jsr deb
+@w:     jsr ie_tick
+        jsr deb
         bmi @w              ; until the drive pulls CLK
         cli
         clc
@@ -125,7 +127,8 @@ iecin:
         lda #0
         sta ie_cnt
         jsr clk_hi
-@rdy:   jsr deb
+@rdy:   jsr ie_tick
+        jsr deb
         bpl @rdy            ; until the talker releases CLK (ready to send)
 @eoi:   lda #0
         sta TB_LO
@@ -211,10 +214,12 @@ ie_send:
         bit ie_eoi
         bpl @wait
 @e1:    jsr deb             ; EOI: the listener pulls DATA, then releases it
+                            ; (no ie_tick in these two: the pulse is short)
         bcc @e1
 @e2:    jsr deb
         bcs @e2
-@wait:  jsr deb
+@wait:  jsr ie_tick
+        jsr deb
         bcc @wait           ; until the listener is ready (DATA released)
         jsr clk_lo
         lda #8
@@ -277,6 +282,26 @@ ie_release:
         tax
         jsr clk_hi
         jmp data_hi
+
+; ie_tick: the bus waits run with interrupts off, and a busy drive can keep
+; them there for many jiffies. Count each jiffy that passes, as the IRQ
+; would have (reading the timer flag acknowledges it, so the IRQ doesn't
+; run for it). Keeps X and Y.
+ie_tick:
+        lda $dc0d
+        lsr a               ; bit 0: CIA 1 timer A ran out
+        bcc @r
+        txa
+        pha
+        inc ticks
+        bne @t
+        inc ticks+1
+        bne @t
+        inc ticks+2
+@t:     jsr tod_tick
+        pla
+        tax
+@r:     rts
 
 ; deb: C = DATA in, N = CLK in (1 = released)
 deb:    lda PRA
