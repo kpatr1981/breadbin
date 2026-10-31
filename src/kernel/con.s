@@ -435,11 +435,11 @@ con_write:
 ; con_read: cooked read of up to r1 bytes into (r0). Blocks until a line
 ; is complete (or CTRL-D on an empty line = EOF). Returns r1 = count.
 con_read:
-        jsr bg_stop
         lda con_raw
         beq @wait
         jmp raw_read
-@wait:  lda lb_ready
+@wait:  jsr bg_stop         ; also after a stop: `bg` may have sent us back
+        lda lb_ready
         bne @copy
         jsr GETIN
         cmp #0
@@ -544,7 +544,8 @@ intr_key:
 @r:     rts
 
 ; bg_stop: a background job that reads the console stops (like SIGTTIN in
-; Unix) until fg brings it to the foreground
+; Unix) until fg brings it to the foreground. Called on every pass of the
+; read loops, so a reader that `bg` continues stops again.
 bg_stop:
         ldx cur
         lda p_flags,x
@@ -561,7 +562,8 @@ bg_stop:
 ;   up ^P($10) down ^N($0e) left ^B($02) right ^F($06) home ^A($01)
 ;   clr ^L($0c) del ^H($08) return $0a; F1-F8 as $85-$8c; ctrl-letters $01-$1a
 raw_read:
-@w:     jsr GETIN
+@w:     jsr bg_stop
+        jsr GETIN
         cmp #0
         bne @k
         lda #1

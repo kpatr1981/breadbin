@@ -36,8 +36,11 @@ b_valid: .res NBUF
 b_dev:   .res NBUF
 b_lo:    .res NBUF
 b_hi:    .res NBUF
-b_age:   .res NBUF
-b_clock: .res 1
+b_age:   .res NBUF      ; lookup clock at the last use (16-bit)
+b_ageh:  .res NBUF
+b_clock: .res 2
+lru_age: .res 2         ; cache_victim scratch: callers keep tmp1-tmp3 across bread
+lru_cur: .res 1
 b_idx:   .res 1
 rq_dev:  .res 1
 rq_lo:   .res 1
@@ -52,7 +55,8 @@ cur_drive: .res 1
 cmdbuf:  .res 40
 cmdlen:  .res 1
 reu_tmp: .res 1
-reu_save: .res 128      ; byte 0 of each bank, kept across reu_detect
+reu_save = bufs         ; byte 0 of each bank (or GeoRAM block), kept across
+                        ; detection: the cache is still unused at boot
 root_reu: .res 1        ; 1: dev 0 lives in the REU
 
 .export bwrite, buf_idx_ptr
@@ -283,7 +287,9 @@ cache_find:
         stx rq_lo
         sty rq_hi
         inc b_clock
-        ldx #NBUF-1
+        bne @cl
+        inc b_clock+1
+@cl:    ldx #NBUF-1
 @l:     lda b_valid,x
         beq @n
         lda b_dev,x
@@ -295,8 +301,7 @@ cache_find:
         lda b_hi,x
         cmp rq_hi
         bne @n
-        lda b_clock
-        sta b_age,x
+        jsr buf_touch
         jsr buf_idx_ptr
         clc
         rts
@@ -313,17 +318,27 @@ cache_victim:
         beq @got
         dex
         bpl @inv
-        ; LRU: largest (clock - age)
+        ; LRU: largest (clock - age), 16-bit
         lda #0
-        sta tmp0
+        sta lru_age
+        sta lru_age+1
         ldx #NBUF-1
         stx b_idx
 @l:     lda b_clock
         sec
         sbc b_age,x
-        cmp tmp0
+        sta lru_cur
+        lda b_clock+1
+        sbc b_ageh,x
+        cmp lru_age+1
         bcc @n
-        sta tmp0
+        bne @y
+        ldy lru_cur
+        cpy lru_age
+        bcc @n
+@y:     sta lru_age+1
+        lda lru_cur
+        sta lru_age
         stx b_idx
 @n:     dex
         bpl @l
@@ -337,9 +352,16 @@ cache_victim:
         sta b_lo,x
         lda rq_hi
         sta b_hi,x
+        jsr buf_touch
+        jmp buf_idx_ptr
+
+; buf_touch: X = buffer, now the most recently used
+buf_touch:
         lda b_clock
         sta b_age,x
-        jmp buf_idx_ptr
+        lda b_clock+1
+        sta b_ageh,x
+        rts
 
 ; ---- IEC (1541) ----
 ; rq_lo/hi -> trk/sec
@@ -635,6 +657,8 @@ geo_detect:
         lda #0
         sta GEO_BLK
         sta GEO_PAGE
+        lda GEO_WIN
+        sta reu_save        ; the probe below overwrites this byte
         lda #$5a            ; is there RAM in the window at all?
         sta GEO_WIN
         cmp GEO_WIN
@@ -643,6 +667,15 @@ geo_detect:
         sta GEO_WIN
         cmp GEO_WIN
         bne @none
+        lda reu_save
+        sta GEO_WIN
+        ; keep byte 0 of each 16 KB block (a preloaded disk image)
+        ldx #0
+@s:     stx GEO_BLK
+        lda GEO_WIN
+        sta reu_save,x
+        inx
+        bne @s
         ; write each 16 KB block's number into it, highest first: blocks
         ; past the end alias lower ones and get overwritten
         ldx #255
@@ -657,10 +690,20 @@ geo_detect:
         bne @n
         inx
         bne @c
-        dex                 ; 4 MB: 256 blocks
+        lda #64             ; 4 MB: all 256 blocks
+        bne @b
 @n:     txa
         lsr a
         lsr a
+@b:     sta tmp0
+        ldx #255            ; put the saved bytes back
+@u:     stx GEO_BLK
+        lda reu_save,x
+        sta GEO_WIN
+        dex
+        cpx #255
+        bne @u
+        lda tmp0
         beq @none
         sta reu_banks
         lda #2

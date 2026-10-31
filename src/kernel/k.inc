@@ -1,7 +1,7 @@
 ; Breadbin kernel internal definitions
 .include "../../include/breadbin.inc"
 
-KSTART  = $8000     ; must match KRAM in kernel.cfg
+KSTART  = $7800     ; must match KRAM in kernel.cfg
 MAXPROC = 12
 NFD     = 8         ; fds per process
 NFILE   = 24        ; system open-file table

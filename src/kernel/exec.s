@@ -6,7 +6,7 @@
 
 .importzp fb, pp
 .import f_done, p_pslot, new_slot, proc_entry, name_off, con_file, find_pid
-.import cwd_ptr, nm_dev, nm_ino, p_uid
+.import cwd_ptr, nm_dev, nm_ino, p_uid, p_pgrp
 
 MAXARGS = 16
 
@@ -16,6 +16,7 @@ sp_out:   .res 1
 sp_err:   .res 1
 sp_flags: .res 1
 sp_slot:  .res 1
+sp_pgrp:  .res 1        ; SP_JOB: the job to join (0 = start a new one)
 hdr:      .res 9
 img_sz:   .res 2
 bss_sz:   .res 2
@@ -49,11 +50,19 @@ spawn_kernel:
         stx sp_err
         lda #SP_IGNINT
         sta sp_flags
+        lda #0
+        sta sp_pgrp
         jmp spawn_common
 
 ; spawn(r0 = path, r1 = argv, A = stdin fd, X = stdout fd, Y = flags)
 sys_spawn:
-        sty sp_flags
+        pha
+        tya
+        and #(SP_BG | SP_IGNINT | SP_JOB)
+        sta sp_flags
+        lda r2
+        sta sp_pgrp
+        pla
         stx sp_out
         jsr fd_get
         bcs @r
@@ -463,7 +472,21 @@ setup_proc:
         sta p_sig,x
         sta p_exit,x
         lda sp_flags
+        and #(SP_BG | SP_IGNINT)
         sta p_flags,x
+        ; job: a new one led by this process, the one asked for, or the parent's
+        lda sp_flags
+        and #SP_JOB
+        beq @inh
+        lda sp_pgrp
+        bne @pg
+@own:   lda p_pid,x
+        bne @pg
+@inh:   ldy cur
+        cpy #$ff
+        beq @own
+        lda p_pgrp,y
+@pg:    sta p_pgrp,x
         lda base
         sta p_mpage,x
         lda npages
@@ -481,6 +504,10 @@ setup_proc:
         sta p_uid,x
         jmp @fd
 @par:   tay
+        lda p_flags,y       ; children of a background process are background
+        and #SP_BG
+        ora p_flags,x
+        sta p_flags,x
         lda p_pid,y
         sta p_ppid,x
         lda p_uid,y

@@ -59,10 +59,12 @@ O_APPEND = $40
 ; spawn flags (Y)
 SP_BG     = $01
 SP_IGNINT = $02
+SP_JOB    = $04      ; job control: r2 = job (process group) to join, 0 = a new one
 
 ; wait flags (X)
 W_NOHANG   = $01
 W_UNTRACED = $02     ; also report children that stopped (X = WSTOPPED)
+W_JOB      = $04     ; A is a job (process group): wait for any of its processes
 WSTOPPED   = $80 | 20
 
 ; stat buffer: type, nlink, size(3), ino, dev, 0
@@ -112,6 +114,7 @@ ESC     = $1b           ; ESC = row+32 col+32, ESC R/r reverse, ESC K clear eol,
                         ; ESC C fg+32 bg+32 border+32 colours
 
 ; signals
+SIGHUP  = 1
 SIGINT  = 2
 SIGKILL = 9
 SIGPIPE = 13

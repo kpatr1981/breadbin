@@ -24,6 +24,7 @@ p_exit:   .res MAXPROC
 p_cwdino: .res MAXPROC
 p_cwddev: .res MAXPROC
 p_uid:    .res MAXPROC
+p_pgrp:   .res MAXPROC      ; job (process group): the pid of its first process
 p_wk0:    .res MAXPROC      ; sleep deadline (jiffies)
 p_wk1:    .res MAXPROC
 p_wk2:    .res MAXPROC
@@ -42,7 +43,7 @@ tod_m:    .res 1
 tod_s:    .res 1
 tod_t:    .res 1
 
-.export p_pslot, new_slot, proc_entry, p_uid, sys_getuid, sys_setuid
+.export p_pslot, new_slot, proc_entry, p_uid, sys_getuid, sys_setuid, p_pgrp
 
 .segment "RODATA"
 s_init: .byte "init exited", 0
@@ -545,6 +546,13 @@ proc_exit:
         sta p_pslot,y
         lda #1
         sta p_ppid,y
+        lda p_state,y       ; a stopped orphan would wait forever: hang it up
+        cmp #PS_STOPPED
+        bne @chn
+        lda #SIGHUP
+        sta p_sig,y
+        lda #PS_READY
+        sta p_state,y
 @chn:   dey
         bpl @ch
         lda #CH_CHILD
@@ -590,7 +598,7 @@ sys_exit:
         jmp proc_exit
 
 ; wait(A = pid or $FF, X = flags) -> A = pid, X = exit code (WSTOPPED: it
-; stopped, reported once with W_UNTRACED)
+; stopped, reported once with W_UNTRACED). W_JOB: A is a job, not a pid.
 sys_wait:
         sta sb0
         stx sb1
@@ -605,6 +613,14 @@ sys_wait:
         lda sb0
         cmp #$ff
         beq @m
+        lda sb1
+        and #W_JOB
+        beq @pid
+        lda sb0
+        cmp p_pgrp,y
+        bne @n
+        beq @m
+@pid:   lda sb0
         cmp p_pid,y
         bne @n
 @m:     inc sb2
@@ -660,6 +676,8 @@ sys_kill:
         lda p_state,x
         cmp #PS_ZOMBIE
         beq @srch
+        jsr may_signal
+        bcs @perm
         lda tmp0
         beq @ok
         cmp #SIGCONT
@@ -683,13 +701,9 @@ sys_kill:
         ora #PF_STOP
         sta p_flags,x
         bne @wake
-@cont:  lda p_flags,x
-        and #<~(PF_STOP | PF_STOPREP)
-        sta p_flags,x
-        lda p_state,x
-        cmp #PS_STOPPED
-        bne @ok
-        beq @wake
+@cont:  jsr cont_slot
+        clc
+        rts
 @perm:  lda #EPERM
         sec
         rts
@@ -697,20 +711,63 @@ sys_kill:
         sec
         rts
 
-; fg(A = pid): make a process a foreground job and continue it
+; fg(A = job, X = 1): continue every process of the job in the
+; foreground; X = 0 (bg): continue it in the background
 sys_fg:
-        pha
-        jsr find_pid
-        bcs @srch
+        sta tmp0
+        stx tmp1
+        lda #0
+        sta tmp2            ; processes found
+        ldx #MAXPROC-1
+@l:     lda p_state,x
+        beq @n
+        cmp #PS_ZOMBIE
+        beq @n
+        lda p_pgrp,x
+        cmp tmp0
+        bne @n
+        jsr may_signal
+        bcs @n
+        inc tmp2
+        lda tmp1
+        beq @c
         lda p_flags,x
         and #<~SP_BG
         sta p_flags,x
-        pla
-        ldx #SIGCONT
-        jmp sys_kill
-@srch:  pla
-        lda #ESRCH
+@c:     jsr cont_slot
+@n:     dex
+        bpl @l
+        lda tmp2
+        beq @srch
+        clc
+        rts
+@srch:  lda #ESRCH
         sec
+        rts
+
+; cont_slot: X = slot. Continue it (SIGCONT).
+cont_slot:
+        lda p_flags,x
+        and #<~(PF_STOP | PF_STOPREP)
+        sta p_flags,x
+        lda p_state,x
+        cmp #PS_STOPPED
+        bne @r
+        lda #PS_READY
+        sta p_state,x
+@r:     rts
+
+; may_signal: X = slot -> carry set if the current user may not signal it
+; (only root signals other users' processes). Uses Y.
+may_signal:
+        ldy cur
+        lda p_uid,y
+        beq @ok
+        cmp p_uid,x
+        bne @no
+@ok:    clc
+        rts
+@no:    sec
         rts
 
 sys_getpid:

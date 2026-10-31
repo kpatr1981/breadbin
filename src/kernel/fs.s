@@ -62,6 +62,7 @@ cnt:     .res 2
 tr_i:    .res 1
 ba_dev:  .res 1
 
+.export bm_alloc
 .export sb_ok, fs_name2, nm_dev, nm_ino, dl_off, dl_ino, f_done, dir_put
 .export bfree, mnt_active, mnt_ino, fs_count_inodes, sb_ninodes, ci_load_type
 .export inode_blk, s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi

@@ -6,7 +6,8 @@ FF_GONE = $80           ; f_flags: unlinked while open, freed at the last close
 .importzp fb, pp
 .import fs_name2, nm_dev, nm_ino, dl_off, f_done, dir_put, sb_ok
 .import fs_count_inodes, sb_ninodes, mnt_ino, mnt_active, p_pslot
-.import s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi
+.import s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi, bm_alloc
+.importzp bp
 
 .segment "BSS"
 f_type:  .res NFILE
@@ -333,19 +334,20 @@ sys_open:
         ldx #T_FILE
         jsr ialloc
         bcs @err
-        pha
+        sta rn_ino
         lda of_dev
         ldx of_ino
         jsr iget
-        pla
-        bcs @err
-        pha
+        bcs @undo
+        lda rn_ino
         jsr dir_add
-        pla
-        bcs @err
+        bcs @undo
+        lda rn_ino
         sta nm_ino
         lda of_dev
         sta nm_dev
+        jmp @exists
+@undo:  jmp undo_ialloc
 @exists:
         lda nm_dev
         ldx nm_ino
@@ -834,7 +836,7 @@ sys_pipe:
         lda sb5
         sta f_pipe,x
         jsr fd_install
-        bcs @r
+        bcs @nofd           ; (it dropped the read end: pi_rd = 0)
         sta sb3
         ; write end
         jsr oft_alloc
@@ -846,11 +848,22 @@ sys_pipe:
         lda sb5
         sta f_pipe,x
         jsr fd_install
-        bcs @r
+        bcs @nofdw
         tax
         lda sb3
         clc
 @r:     rts
+@nofdw: pha                 ; closing the read end frees the pipe
+        lda sb3
+        jsr sys_close
+        pla
+        sec
+        rts
+@nofd:  pha
+        ldy sb5
+        lda #0
+        sta pi_wr,y
+        jmp @fr
 @nofile2:
         pha
         lda sb3
@@ -962,21 +975,36 @@ sys_mkdir:
         jsr set_name_dot
         lda rn_ino
         jsr dir_add
-        bcs @r
+        bcs @undo
         jsr set_name_dotdot
         lda of_ino
         jsr dir_add
-        bcs @r
+        bcs @undo
         lda of_dev
         ldx of_ino
         jsr iget
-        bcs @r
+        bcs @undo
         jsr restore_name
         lda rn_ino
         jsr dir_add
-        bcs @r
+        bcs @undo
         inc ci+I_NLINK
         jmp iput
+@undo:  jmp undo_ialloc
+
+; undo_ialloc: A = errno. Free inode rn_ino on of_dev, allocated but never
+; linked into its directory (the disk filled up). Returns carry set, A.
+undo_ialloc:
+        pha
+        lda of_dev
+        ldx rn_ino
+        jsr iget
+        bcs @r
+        jsr ifree
+        jsr iput
+@r:     pla
+        sec
+        rts
 
 ; rmdir(r0 = path)
 sys_rmdir:
@@ -1145,7 +1173,18 @@ sys_rename:
         jmp cbm_rename      ; fs_name2 = old, fs_name = new
 @c64n:  lda nm_ino
         sta rn_npi
-        jsr dir_lookup
+        lda rn_type
+        cmp #T_DIR
+        bne @nsub
+        jsr in_subtree
+        bcc @nsub2
+        jmp @inval
+@nsub2: lda rn_od           ; in_subtree changed ci: the new parent again
+        ldx rn_npi
+        jsr iget
+        bcc @nsub
+        rts
+@nsub:  jsr dir_lookup
         beq @add
         sta rn_ex
         cmp rn_ino
@@ -1211,6 +1250,33 @@ sys_rename:
         inc ci+I_NLINK
         jmp iput
 @done:  clc
+        rts
+
+; in_subtree: carry set if directory rn_npi (on rn_od) is rn_ino or lies
+; below it. Walks up through each directory's ".." (its second entry).
+in_subtree:
+        lda rn_npi
+@l:     cmp rn_ino
+        beq @y
+        cmp #ROOT_INO
+        beq @n
+        tax
+        lda rn_od
+        jsr iget
+        bcs @n
+        lda #0
+        sta bm_alloc
+        jsr bmap
+        bcs @n
+        lda ci_dev
+        jsr bread
+        bcs @n
+        ldy #DIRENT
+        lda (bp),y
+        jmp @l
+@y:     sec
+        rts
+@n:     clc
         rts
 
 ; ---------------------------------------------------------------------

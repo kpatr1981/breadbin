@@ -62,7 +62,9 @@ bk_sig:  .res 1
 bk_i:    .res 1
 bk_p:    .res 2
 pinfo:   .res 17
-lastjob: .res 1         ; pid that fg/bg act on by default
+lastjob: .res 1         ; job that fg/bg act on by default
+job:     .res 1         ; job of the pipeline being started (its first pid)
+fgjob:   .res 1
 g_tok:   .res 1
 g_word:  .res 2
 g_d:     .res 1
@@ -350,6 +352,7 @@ run_cmd:
         rts
 @ne:    lda #0
         sta bg
+        sta job
         sta npids
         sta prev_in
         ldx cmd_end
@@ -519,10 +522,12 @@ stage:  lda #0
         sta r1
         lda #>av
         sta r1+1
-        ldy #0
+        lda job             ; every stage joins the job of the first one
+        sta r2
+        ldy #SP_JOB
         lda bg
         beq @fg
-        ldy #SP_BG
+        ldy #(SP_JOB | SP_BG)
 @fg:    lda pin
         ldx pout
         jsr SYS_SPAWN
@@ -531,7 +536,10 @@ stage:  lda #0
         ldy av+1
         jsr perr
         jmp @cl
-@spok:  ldx npids
+@spok:  ldx job
+        bne @inj
+        sta job
+@inj:   ldx npids
         sta pids,x
         inc npids
 @cl:    jsr close_pin
@@ -552,31 +560,27 @@ stage:  lda #0
         beq @wl
         lda #'['
         jsr putc
-        ldx npids
-        lda pids-1,x
+        lda job
         sta lastjob
         ldx #0
         jsr print_dec
         lda #']'
         jsr putc
         jmp newline
-@wl:    ldx #0
-@w:     stx tmpb
-        lda pids,x
+@wl:    lda job
         jsr fgwait
-        bcs @r              ; stopped: the rest of the pipeline is too
-        ldx tmpb
-        inx
-        cpx npids
-        bne @w
 @r:     rts
 
-; fgwait: wait for foreground pid A; carry set if it stopped instead
-fgwait: ldx #W_UNTRACED
+; fgwait: wait for every process of foreground job A; carry set if the
+; job stopped instead
+fgwait: sta fgjob
+@w:     lda fgjob
+        ldx #(W_UNTRACED | W_JOB)
         jsr SYS_WAIT
-        bcs @ok
+        bcs @ok             ; ECHILD: all of the job's processes are gone
         cpx #WSTOPPED
-        bne @ok
+        bne @w
+        lda fgjob
         sta lastjob
         jsr newline
         lda #'['
@@ -846,17 +850,9 @@ abort:  jsr close_pin
         sta bg
         lda #1
         sta last
-        ldx #0
-        cpx npids
+        lda job             ; wait for the stages already started
         beq @r
-@l:     stx tmpb
-        lda pids,x
-        ldx #0
-        jsr SYS_WAIT
-        ldx tmpb
-        inx
-        cpx npids
-        bne @l
+        jsr fgwait
 @r:     rts
 
 syntax: lda prev_in
@@ -1023,9 +1019,10 @@ bi_kill:
 @done:  sec
         rts
 
-; fg [pid]: bring a stopped or background job to the foreground
+; fg [job]: bring a stopped or background job to the foreground
 bi_fg:  jsr job_arg
         bcs @r
+        ldx #1
         jsr SYS_FG
         bcs job_err
         lda bk_p
@@ -1033,11 +1030,11 @@ bi_fg:  jsr job_arg
 @r:     sec
         rts
 
-; bg [pid]: let a stopped job go on running in the background
+; bg [job]: let a stopped job go on running in the background
 bi_bg:  jsr job_arg
         bcs @r
-        ldx #SIGCONT
-        jsr SYS_KILL
+        ldx #0
+        jsr SYS_FG
         bcs job_err
         lda #'['
         jsr putc

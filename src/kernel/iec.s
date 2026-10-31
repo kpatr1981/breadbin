@@ -12,7 +12,8 @@
 ; iecin:     -> A = byte; ie_st bit 6 is set once the last byte (EOI) is in
 ; iecunlisten, iecuntalk
 ; All return carry set on a bus error (ie_st: $80 no device, $03 no frame
-; acknowledge, $02 read timeout).  X and Y are preserved.
+; acknowledge, $02 read timeout).  X and Y are preserved.  ie_st keeps
+; every error since the last LISTEN/TALK, and iecunlisten reports them.
 .include "k.inc"
 
 PRA      = $dd00        ; out: bit 3 ATN, 4 CLK, 5 DATA (1 = pull low)
@@ -94,9 +95,16 @@ iecout:
         sta ie_buf
         rts
 
+; iecunlisten: also fails when any byte since the LISTEN failed (ie_st
+; collects the errors; iecout's own carry is easy to lose in a send loop)
 iecunlisten:
         lda #$3f
-        bne unl_unt
+        jsr unl_unt
+        bcs @r
+        lda ie_st
+        and #$83
+        cmp #1              ; carry set if an error bit is set
+@r:     rts
 iecuntalk:
         sei
         jsr clk_lo
