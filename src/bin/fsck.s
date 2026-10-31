@@ -58,8 +58,15 @@ start:  lda #0
         rts
 @ok:    jsr walk
         jsr check_inodes
-        jsr mark_used
+        lda #0              ; the bitmap, 2048 blocks (one bitmap block) at a time
+        sta chunk
+@chunk: jsr mark_used
         jsr check_bitmap
+        bcs @sum
+        inc chunk
+        lda chunk
+        cmp nbm
+        bcc @chunk
         lda fix
         beq @sum
         jsr write_back
@@ -138,6 +145,10 @@ load:   lda path
         sta istart+1
         lda sb+14
         sta root
+        lda istart          ; bitmap blocks: up to the inode table
+        sec
+        sbc bmblk
+        sta nbm
         ; inode blocks: (ninodes + 7) / 8
         lda ninodes
         clc
@@ -146,15 +157,6 @@ load:   lda path
         lsr a
         lsr a
         sta niblk
-        ; bitmap
-        lda bmblk
-        sta blk
-        lda bmblk+1
-        sta blk+1
-        lda #<bm
-        ldx #>bm
-        jsr rdblk
-        bcs @ioerr
         ; inodes
         lda #0
         sta n
@@ -511,19 +513,34 @@ inoptr: stx n
         rts
 
 ; ---- blocks ----
-; mark_used: the blocks that must be marked used: the superblock, bitmap
-; and inode blocks, the CBM side of a 1541 disk, and every inode's blocks
+; mark_used: the blocks (of this chunk) that must be marked used: the
+; superblock, bitmap and inode blocks, the CBM side of a 1541 disk, and
+; every inode's blocks
 mark_used:
+        ldy #0
+        tya
+@z:     sta used,y
+        iny
+        bne @z
         lda sb_at
         sta blk
         lda sb_ath
         sta blk+1
         jsr use
-        lda bmblk
+        lda #0
+        sta n
+@bb:    lda bmblk           ; the bitmap blocks
+        clc
+        adc n
         sta blk
         lda bmblk+1
+        adc #0
         sta blk+1
         jsr use
+        inc n
+        lda n
+        cmp nbm
+        bcc @bb
         lda #0
         sta n
 @ib:    lda n
@@ -670,10 +687,16 @@ ts_blk: tay
         sta blk+1
         rts
 
-; bitpos: blk -> Y = byte in a bitmap, A = its bit; carry set if blk >= 2048
+; bitpos: blk -> Y = byte in the chunk's bitmap, A = its bit; carry set if
+; blk is not in this chunk (blocks chunk * 2048 .. +2047)
 bitpos: lda blk+1
-        cmp #8
-        bcs @r
+        lsr a
+        lsr a
+        lsr a
+        cmp chunk
+        bne @no
+        lda blk+1
+        and #7
         sta tmp3
         lda blk
         lsr tmp3
@@ -688,7 +711,9 @@ bitpos: lda blk+1
         tax
         lda bits,x
         clc
-@r:     rts
+        rts
+@no:    sec
+        rts
 
 ; use: mark blk used (reserved blocks)
 use:    jsr bitpos
@@ -711,6 +736,7 @@ use_ino:
         cmp nblocks
         bcs @bad
 @in:    jsr bitpos
+        bcs @r              ; another chunk's
         sta tmp
         and used,y
         bne @twice
@@ -718,7 +744,9 @@ use_ino:
         ora used,y
         sta used,y
 @r:     rts
-@bad:   lda #<s_inode
+@bad:   lda chunk           ; reported once, in the first chunk
+        bne @r
+        lda #<s_inode
         ldx #>s_inode
         jsr print_ino
         lda #<s_range
@@ -739,13 +767,36 @@ print_blk:
         ldx blk+1
         jmp print_dec
 
-; check_bitmap: every block below nblocks: used <-> marked in the bitmap
+; check_bitmap: the chunk's blocks below nblocks: used <-> marked in its
+; bitmap block (written back with -f). Carry set on a read error.
 check_bitmap:
-        lda #0
+        lda bmblk
+        clc
+        adc chunk
         sta blk
+        lda bmblk+1
+        adc #0
         sta blk+1
+        lda #<bm
+        ldx #>bm
+        jsr rdblk
+        bcc @rd
+        rts
+@rd:    lda #0
+        sta blk
         sta bmchg
+        lda chunk
+        asl a
+        asl a
+        asl a
+        sta blk+1
 @l:     lda blk+1
+        lsr a
+        lsr a
+        lsr a
+        cmp chunk
+        bne @r              ; past this chunk
+        lda blk+1
         cmp nblocks+1
         bcc @c
         bne @r
@@ -789,9 +840,22 @@ check_bitmap:
         bne @l
         inc blk+1
         jmp @l
-@r:     rts
+@r:     lda bmchg
+        beq @ok
+        lda bmblk
+        clc
+        adc chunk
+        sta blk
+        lda bmblk+1
+        adc #0
+        sta blk+1
+        lda #<bm
+        ldx #>bm
+        jsr wrblk
+@ok:    clc
+        rts
 
-; write_back: changed inode blocks and the bitmap, then sync
+; write_back: changed inode blocks, then sync
 write_back:
         lda #0
         sta n
@@ -816,16 +880,7 @@ write_back:
         jsr wrblk
 @nx:    inc n
         bne @ib
-@bm:    lda bmchg
-        beq @s
-        lda bmblk
-        sta blk
-        lda bmblk+1
-        sta blk+1
-        lda #<bm
-        ldx #>bm
-        jsr wrblk
-@s:     jmp SYS_SYNC
+@bm:    jmp SYS_SYNC
 
 ; problem: one more problem; ends its line
 problem:
@@ -864,6 +919,8 @@ stbuf:   .res 8
 nblocks: .res 2
 ninodes: .res 1
 niblk:   .res 1
+nbm:     .res 1
+chunk:   .res 1
 bmblk:   .res 2
 istart:  .res 2
 root:    .res 1

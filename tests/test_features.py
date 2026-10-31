@@ -186,5 +186,27 @@ class Fsck(unittest.TestCase):
             self.assertNotIn("ghost", v.run("ls /home"))
 
 
+class BigRAMDisk(unittest.TestCase):
+    """A 2 MB REU: /tmp uses all of it (four bitmap blocks)."""
+
+    def test_full_size_tmp(self):
+        with Vice(copy_image("reu2m"), extra=["-reu", "-reusize", "2048"]) as v:
+            v.wait_shell()
+            tmp = next(l for l in v.run("df").splitlines() if l.endswith("/tmp"))
+            self.assertEqual(tmp.split()[0], "8192", tmp)
+            v.run("cd /tmp")
+            v.run("cp /bin/as a")
+            v.run("cat a a a a > b")
+            v.run("cat b a > c")
+            for i in range(16):                         # 16 x 130 blocks: past block 2048
+                v.run("cp c c%d" % i, timeout=180)
+            used = int(next(l for l in v.run("df").splitlines() if l.endswith("/tmp")).split()[1])
+            self.assertGreater(used, 2200)
+            self.assertEqual(v.run("wc c15"), v.run("wc c").replace(" c", " c15"))
+            self.assertEqual(v.run("fsck /tmp", timeout=300), "clean")
+            v.run("rm c0")
+            self.assertEqual(v.run("fsck /tmp", timeout=300), "clean")
+
+
 if __name__ == "__main__":
     unittest.main()
