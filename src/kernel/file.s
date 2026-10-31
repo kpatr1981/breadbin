@@ -139,13 +139,24 @@ oft_unref:
         lda pi_page,y
         ldy #1
         jmp page_free
-@free:  lda #FT_FREE
+@free:  tay
+        lda #FT_FREE
         sta f_type,x
+        cpy #FT_FILE
+        bne @r
         lda f_flags,x
         bmi ino_release
+        and #(O_WRONLY | O_RDWR)
+        beq @r
+        lda tmp3            ; last close of a written file: write it back
+        pha
+        jsr bflush_all
+        pla
+        sta tmp3
 @r:     rts
 
 ; ino_release: X = the just-freed entry of a file unlinked while open.
+; (Its blocks are freed, so there is nothing to write back.)
 ; Frees the inode when no other open file uses it any more.
 ino_release:
         lda tmp3

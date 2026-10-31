@@ -8,7 +8,7 @@
 ;   .byte 1, "text", >addr      .word expr, ...      .res count
 ; Operands: #imm  #<expr  #>expr  zp/abs  ,x ,y  (zp,x)  (zp),y  (abs)
 ; Expressions: numbers ($hex %bin dec 'c'), labels, * (pc), + and -.
-; System names are predefined: sys_exit .. sys_fg, r0 r1 r2,
+; System names are predefined: sys_exit .. sys_sync, r0 r1 r2,
 ; argv argc, o_rdonly o_wronly o_rdwr o_creat o_trunc o_append.
 ; Output is a relocatable CX file: run it like any other command.
 .include "../../include/breadbin.inc"
@@ -1324,6 +1324,7 @@ builtins:
         SYM "sys_mntinfo", SYS_MNTINFO
         SYM "sys_diskio", SYS_DISKIO
         SYM "sys_fg", SYS_FG
+        SYM "sys_sync", SYS_SYNC
         SYM "r0", r0
         SYM "r1", r1
         SYM "r2", r2

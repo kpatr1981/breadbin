@@ -37,6 +37,7 @@ SYS_UMOUNT   = SYS_BASE + 3*28
 SYS_MNTINFO  = SYS_BASE + 3*29
 SYS_DISKIO   = SYS_BASE + 3*30
 SYS_FG       = SYS_BASE + 3*31
+SYS_SYNC     = SYS_BASE + 3*32
 
 ; argument registers (zero page, saved per process)
 r0 = $02

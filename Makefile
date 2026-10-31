@@ -8,7 +8,7 @@ LIBSRC  := $(wildcard src/lib/*.s)
 LIBOBJ  := $(BUILD)/lib/breadbin.lib
 ROOTSRC := $(shell find rootfs -type f)
 
-.PHONY: all clean test test-host test-openroms webdemo video run run-reu
+.PHONY: all clean test test-host test-ntsc test-openroms webdemo video run run-reu
 .SECONDARY:
 all: $(BUILD)/breadbin.d64
 
@@ -66,22 +66,30 @@ $(BUILD)/breadbin-test.d64: $(BUILD)/breadbin.d64 $(TCX)
 test-host:
 	python3 -m unittest discover -s tools -p 'test_*.py'
 
+# system tests run in parallel, one VICE per test class (tools/ptest.py);
+# `python3 tools/ptest.py --failed` reruns only what failed
 test: all $(BUILD)/breadbin-test.d64 test-host
-	python3 -m unittest discover -s tests -p 'test_*.py' -v
+	python3 tools/ptest.py
+
+# the same tests on an NTSC machine
+test-ntsc: all $(BUILD)/breadbin-test.d64
+	VICEFLAGS=-ntsc python3 tools/ptest.py
 
 # the same system tests under the MEGA65 Open ROMs (LGPL-3, fetched once)
 OPENROMS     := $(BUILD)/openroms
-OPENROMS_URL := https://raw.githubusercontent.com/MEGA65/open-roms/master/bin
+OPENROMS_REV := ad178dbe4d48cd6a317737a8e0e7e662f7e33d32
+OPENROMS_URL := https://raw.githubusercontent.com/MEGA65/open-roms/$(OPENROMS_REV)/bin
 $(OPENROMS)/%.rom:
 	@mkdir -p $(dir $@)
 	curl -sfL -o $@ $(OPENROMS_URL)/$*.rom
 
 test-openroms: all $(BUILD)/breadbin-test.d64 $(OPENROMS)/kernal_generic.rom $(OPENROMS)/basic_generic.rom $(OPENROMS)/chargen_openroms.rom
-	OPENROMS=$(OPENROMS) python3 -m unittest discover -s tests -p 'test_*.py' -v
+	OPENROMS=$(OPENROMS) python3 tools/ptest.py
 
 # the browser demo (itch.io HTML5): EmulatorJS + VICE on the Open ROMs, booting from the REU
-WEBDEMO ?= $(HOME)/Documents/proj/personal/games/tools/webdemo
+# WEBDEMO = the webdemo kit (EmulatorJS + VICE core), e.g. make webdemo WEBDEMO=~/webdemo
 webdemo: all
+	@test -n "$(WEBDEMO)" || { echo "set WEBDEMO to the webdemo kit directory"; exit 1; }
 	python3 tools/webdemo.py $(WEBDEMO) $(BUILD)/breadbin.prg $(BUILD)/breadbin.d64 $(BUILD)/webdemo
 
 # the YouTube demo video (a typed session, booted like the browser demo)

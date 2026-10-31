@@ -947,6 +947,8 @@ sys_umount:
         beq @busy
 @pn:    dex
         bpl @p
+        jsr bflush_all      ; its changed blocks go out before it is gone
+        bcs @r
         lda mo_dev
         jsr mnt_of_dev
         bcs @inval

@@ -6,7 +6,7 @@
 .include "k.inc"
 
 .importzp bp
-.import bwrite, name_off
+.import bwrite, bdirty, name_off
 
 .segment "ZEROPAGE"
 fb:     .res 2          ; caller buffer pointer for fs_read/fs_write
@@ -280,7 +280,7 @@ iput:
         cpx #INO_SIZE
         bne @l
         ldx tmp2
-        jmp bwrite
+        jmp bdirty
 @r:     rts
 
 ci_load_type:
@@ -387,13 +387,13 @@ balloc:
         ora tmp1
         sta (bp),y
         ldx tmp2
-        jsr bwrite
+        jsr bdirty
         bcs @r
         lda ba_dev
         ldx bm_res
         ldy bm_res+1
         jsr bget_buf
-        jsr bwrite
+        jsr bdirty
         bcs @r
         ldx bm_res
         ldy bm_res+1
@@ -441,7 +441,7 @@ bfree:
         and tmp0
         sta (bp),y
         ldx tmp2
-        jmp bwrite
+        jmp bdirty
 @r:     rts
 
 ; fs_count_free: A = dev -> X/Y = free blocks
@@ -568,7 +568,7 @@ bmap:
         lda bm_res+1
         sta (bp),y
         ldx tmp2
-        jsr bwrite
+        jsr bdirty
         bcs @r
         ldx bm_res
         ldy bm_res+1
@@ -836,7 +836,7 @@ fs_write:
         cpy io_n
         bne @cp
         ldx io_w
-        jsr bwrite
+        jsr bdirty
         bcs @err
         jsr io_advance
         ; size = max(size, off)
@@ -957,7 +957,7 @@ dir_put:
         cpx #15
         bne @n
         ldx io_w
-        jmp bwrite
+        jmp bdirty
 @r:     rts
 
 ; dir_add: add entry fs_name -> inode A to directory ci

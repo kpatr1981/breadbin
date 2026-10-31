@@ -63,6 +63,7 @@ class Vice:
                      "-basic", os.path.join(roms, "basic_generic.rom"),
                      "-chargen", os.path.join(roms, "chargen_openroms.rom")]
         args += list(extra)
+        args += os.environ.get("VICEFLAGS", "").split()   # e.g. -ntsc
         args += ["-autostart", image]
         self.log = tempfile.NamedTemporaryFile(prefix="vice", suffix=".log", delete=False)
         self.proc = subprocess.Popen(args, stdout=self.log, stderr=subprocess.STDOUT)

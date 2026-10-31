@@ -8,7 +8,9 @@
 ; With no drive 8 but a disk image preloaded into the REU (an emulator's
 ; .reu file: block b at offset b*256), dev 0 is that image and there is no
 ; RAM disk.
-; Cache is write-through: bwrite writes the buffer to its device at once.
+; Cache is write-back: bdirty marks a buffer changed, and it reaches its
+; device when it is evicted, on bflush_all (close of a written file, sync,
+; umount), or by bflush_due once it has been changed for 2 seconds.
 .include "k.inc"
 
 
@@ -38,6 +40,11 @@ b_lo:    .res NBUF
 b_hi:    .res NBUF
 b_age:   .res NBUF      ; lookup clock at the last use (16-bit)
 b_ageh:  .res NBUF
+b_dirty: .res NBUF      ; changed since it was read or written
+dirty_on: .res 1        ; some buffer is changed, since jiffy dirty_t
+dirty_t: .res 2
+fl_x:    .res 1
+fl_err:  .res 1
 b_clock: .res 2
 lru_age: .res 2         ; cache_victim scratch: callers keep tmp1-tmp3 across bread
 lru_cur: .res 1
@@ -59,7 +66,7 @@ reu_save = bufs         ; byte 0 of each bank (or GeoRAM block), kept across
                         ; detection: the cache is still unused at boot
 root_reu: .res 1        ; 1: dev 0 lives in the REU
 
-.export bwrite, buf_idx_ptr
+.export bwrite, bdirty, buf_idx_ptr, bflush_due, sys_sync
 
 .segment "RODATA"
 ; first linear block of each track (tracks 1..36), 16-bit
@@ -240,7 +247,8 @@ bget_buf:
         clc
         rts
 
-; bwrite: X = buffer index. Write it to its device.
+; bwrite: X = buffer index. Write it to its device now. Carry set (A = EIO)
+; on an I/O error; either way the buffer counts as clean afterwards.
 bwrite:
         stx b_idx
         lda b_dev,x
@@ -259,13 +267,74 @@ bwrite:
         jmp @r
 @reu:   jsr reu_write
 @r:     ldx b_idx
+        lda #0
+        sta b_dirty,x
         bcc @ok
         lda #EIO
 @ok:    rts
-bdirty = bwrite
 
-bflush_all:
+; bdirty: X = buffer index. Mark it changed (written back later).
+bdirty:
+        lda b_dirty,x
+        bne @r
+        lda #1
+        sta b_dirty,x
+        lda dirty_on
+        bne @r
+        inc dirty_on
+        lda ticks
+        sta dirty_t
+        lda ticks+1
+        sta dirty_t+1
+@r:     clc
         rts
+
+; bflush_all: write every changed buffer back. Carry set (A = EIO) if one
+; failed: that block is lost (it is dropped, so a bad disk can't make every
+; later flush retry it).
+bflush_all:
+        lda #0
+        sta fl_err
+        ldx #NBUF-1
+@l:     lda b_dirty,x
+        beq @n
+        stx fl_x
+        jsr bwrite
+        ldx fl_x
+        bcc @n
+        sta fl_err
+        lda #0
+        sta b_valid,x
+@n:     dex
+        bpl @l
+        lda #0
+        sta dirty_on
+        lda fl_err
+        beq @ok
+        sec
+        rts
+@ok:    clc
+        rts
+
+; sync(): write back every changed block
+sys_sync = bflush_all
+
+; bflush_due: on every return from a system call. Write back once a block
+; has been changed for 2 seconds.
+bflush_due:
+        lda dirty_on
+        beq @r
+        lda ticks
+        sec
+        sbc dirty_t
+        tax
+        lda ticks+1
+        sbc dirty_t+1
+        bne @go
+        cpx #120
+        bcc @r
+@go:    jmp bflush_all
+@r:     rts
 
 ; binval: A = dev. Forget its cached blocks (after the drive's own DOS
 ; changed the disk behind our back).
@@ -344,7 +413,10 @@ cache_victim:
         bpl @l
         ldx b_idx
 @got:   stx b_idx
-        lda #0
+        lda b_dirty,x
+        beq @clean
+        jsr victim_flush
+@clean: lda #0
         sta b_valid,x
         lda rq_dev
         sta b_dev,x
@@ -354,6 +426,29 @@ cache_victim:
         sta b_hi,x
         jsr buf_touch
         jmp buf_idx_ptr
+
+; victim_flush: X = b_idx = a changed buffer about to be reused: write it
+; back first. Keeps the request (rq_*) and tmp0-tmp2, which callers of
+; bread rely on. An I/O error here loses the block.
+victim_flush:
+        ldy #0
+@s:     lda rq_dev,y
+        pha
+        lda tmp0,y
+        pha
+        iny
+        cpy #3
+        bne @s
+        jsr bwrite
+        ldy #2
+@r:     pla
+        sta tmp0,y
+        pla
+        sta rq_dev,y
+        dey
+        bpl @r
+        ldx b_idx
+        rts
 
 ; buf_touch: X = buffer, now the most recently used
 buf_touch:
