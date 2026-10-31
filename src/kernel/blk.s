@@ -65,8 +65,14 @@ reu_tmp: .res 1
 reu_save = bufs         ; byte 0 of each bank (or GeoRAM block), kept across
                         ; detection: the cache is still unused at boot
 root_reu: .res 1        ; 1: dev 0 lives in the REU
+rd_banks: .res 1        ; REU banks for the /tmp RAM disk
+dc_on:   .res 1         ; drive 8's blocks are copied into the REU ...
+dc_base: .res 1         ; ... from this bank on (683 blocks: 3 banks)
+dc_have: .res 86        ; one bit per block: it is in the REU copy
+dc_hi:   .res 1
+DC_BANKS = 3
 
-.export bwrite, bdirty, buf_idx_ptr, bflush_due, sys_sync
+.export bwrite, bdirty, buf_idx_ptr, bflush_due, sys_sync, rd_banks
 
 .segment "RODATA"
 ; first linear block of each track (tracks 1..36), 16-bit
@@ -87,9 +93,11 @@ blk_init:
         lda #1
         sta dev_present
         jsr reu_detect
+        lda reu_banks
+        sta rd_banks
         ldx #0
         jsr iec_open
-        bcc @r
+        bcc @drv
         lda reu_banks       ; no drive 8: boot from the REU instead
         beq @r
         lda #1
@@ -97,6 +105,15 @@ blk_init:
         lda #0
         sta dev_present+1
 @r:     rts
+@drv:   lda reu_banks       ; 4+ banks: the top 3 keep a copy of drive 8
+        cmp #DC_BANKS+1
+        bcc @r
+        sec
+        sbc #DC_BANKS
+        sta rd_banks
+        sta dc_base
+        inc dc_on
+        rts
 
 ; is_reu: A = dev -> Z set if its blocks live in the REU
 is_reu: cmp #1
@@ -213,8 +230,16 @@ bread:
         jsr is_reu
         beq @reu
         lda rq_dev
+        bne @iec
+        jsr dc_get          ; drive 8: from its copy in the REU?
+        bcc @chk
+@iec:   lda rq_dev
         jsr cur_dev_set
         jsr iec_read
+        bcs @chk
+        lda rq_dev
+        bne @chk
+        jsr dc_put          ; (clears carry)
         jmp @chk
 @reu:   jsr reu_read
 @chk:   ldx b_idx
@@ -264,6 +289,10 @@ bwrite:
         lda rq_dev
         jsr cur_dev_set
         jsr iec_write
+        bcs @r
+        lda rq_dev
+        bne @r
+        jsr dc_put          ; keep drive 8's REU copy current
         jmp @r
 @reu:   jsr reu_write
 @r:     ldx b_idx
@@ -336,11 +365,80 @@ bflush_due:
 @go:    jmp bflush_all
 @r:     rts
 
+; dc_get: drive 8 block rq_* -> bp from the REU copy; carry set if it
+; isn't there. dc_put: copy bp there (and remember it); carry clear.
+dc_get: jsr dc_bit
+        bcs @r
+        and dc_have,y
+        beq @no
+        jsr dc_to
+        jsr reu_read
+        jmp dc_back
+@no:    sec
+@r:     rts
+
+dc_put: jsr dc_bit
+        bcs @r
+        ora dc_have,y
+        sta dc_have,y
+        jsr dc_to
+        jsr reu_write
+        jsr dc_back
+@r:     clc
+        rts
+
+; dc_bit: rq_* -> Y = byte of dc_have, A = bit; carry set if no REU copy
+dc_bit: lda dc_on
+        beq @no
+        lda rq_hi
+        sta dc_hi
+        lda rq_lo
+        lsr dc_hi
+        ror a
+        lsr dc_hi
+        ror a
+        lsr dc_hi
+        ror a
+        tay
+        lda rq_lo
+        and #7
+        tax
+        lda #1
+@s:     dex
+        bmi @d
+        asl a
+        bne @s
+@d:     clc
+        rts
+@no:    sec
+        rts
+
+; dc_to: rq_* = the copy's REU block (bank dc_base + block >> 8); dc_back
+; puts the drive block back. Both clear carry.
+dc_to:  lda rq_hi
+        sta dc_hi
+        clc
+        adc dc_base
+        sta rq_hi
+        rts
+dc_back:
+        lda dc_hi
+        sta rq_hi
+        clc
+        rts
+
 ; binval: A = dev. Forget its cached blocks (after the drive's own DOS
 ; changed the disk behind our back).
 binval:
         ldx #NBUF-1
         sta tmp0
+        cmp #0
+        bne @l
+        ldy #85             ; drive 8: its REU copy too
+        lda #0
+@c:     sta dc_have,y
+        dey
+        bpl @c
 @l:     lda b_dev,x
         cmp tmp0
         bne @n

@@ -187,13 +187,14 @@ class Fsck(unittest.TestCase):
 
 
 class BigRAMDisk(unittest.TestCase):
-    """A 2 MB REU: /tmp uses all of it (four bitmap blocks)."""
+    """A 2 MB REU: /tmp gets all of it but the 3 banks that keep a copy of
+    drive 8: 29 banks, 7424 blocks (four bitmap blocks)."""
 
     def test_full_size_tmp(self):
         with Vice(copy_image("reu2m"), extra=["-reu", "-reusize", "2048"]) as v:
             v.wait_shell()
             tmp = next(l for l in v.run("df").splitlines() if l.endswith("/tmp"))
-            self.assertEqual(tmp.split()[0], "8192", tmp)
+            self.assertEqual(tmp.split()[0], "7424", tmp)
             v.run("cd /tmp")
             v.run("cp /bin/as a")
             v.run("cat a a a a > b")
@@ -206,6 +207,25 @@ class BigRAMDisk(unittest.TestCase):
             self.assertEqual(v.run("fsck /tmp", timeout=300), "clean")
             v.run("rm c0")
             self.assertEqual(v.run("fsck /tmp", timeout=300), "clean")
+
+
+class DriveCopyInREU(unittest.TestCase):
+    """With an REU, drive 8's blocks are read from the drive once."""
+
+    def test_second_read_comes_from_the_reu(self):
+        img = copy_image("dc")
+        with Vice(img, reu=True) as v:
+            v.wait_shell()
+            v.run("cd /bin")
+            first = int(v.run("/test/readtime as basic edit", timeout=300))
+            second = int(v.run("/test/readtime as basic edit", timeout=300))
+            print("\nreadtime: first %d, second %d jiffies" % (first, second))
+            self.assertLess(second * 4, first)
+            v.run("cp as /home/x")                      # writes reach the copy too
+            v.run("cat basic edit > /dev/null")
+            self.assertEqual(v.run("wc /home/x"), v.run("wc as").replace(" as", " /home/x"))
+            v.run("sync")
+        self.assertEqual(host_cat(img, "/home/x"), host_cat(img, "/bin/as"))
 
 
 if __name__ == "__main__":

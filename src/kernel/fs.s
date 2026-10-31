@@ -6,7 +6,7 @@
 .include "k.inc"
 
 .importzp bp
-.import bwrite, bdirty, name_off
+.import bwrite, bdirty, name_off, rd_banks
 
 .segment "ZEROPAGE"
 fb:     .res 2          ; caller buffer pointer for fs_read/fs_write
@@ -1232,17 +1232,18 @@ nameiparent:
 
 ; ---------------------------------------------------------------------
 ; fs_mkfs_reu: format the REU (or GeoRAM) as c64fs: all of it, up to 128
-; banks (32768 blocks). Superblock 0, bitmap 1..nbm, 32 inode blocks.
+; banks (32768 blocks), less what the drive 8 copy uses (rd_banks).
+; Superblock 0, bitmap 1..nbm, 32 inode blocks.
 RD_INOBLK = 32
 fs_mkfs_reu:
         lda #1
         sta ci_dev
         sta ba_dev
-        lda reu_banks
+        lda rd_banks
         sta sb_nblocks_hi+1
         lda #0
         sta sb_nblocks_lo+1
-        lda reu_banks       ; bitmap blocks: banks / 8, rounded up
+        lda rd_banks       ; bitmap blocks: banks / 8, rounded up
         clc
         adc #7
         lsr a
@@ -1277,7 +1278,7 @@ fs_mkfs_reu:
         lda #0
         sta (bp),y          ; nblocks lo
         iny
-        lda reu_banks
+        lda rd_banks
         sta (bp),y          ; nblocks hi
         iny
         lda #255
@@ -1351,7 +1352,7 @@ fs_mkfs_reu:
         inx
         cpx sb_nbm+1
         bne @bw
-        lda reu_banks
+        lda rd_banks
         and #7
         beq @bw
         asl a
