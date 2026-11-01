@@ -1,5 +1,6 @@
 files:  ls cat cp mv rm mkdir rmdir
         pwd stat hexdump edit head more
+        touch
 text:   echo grep wc tee tail sort
 system: ps kill jobs fg bg free df
         uptime date uname version

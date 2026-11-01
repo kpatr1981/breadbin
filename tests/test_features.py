@@ -291,5 +291,49 @@ class Tools(unittest.TestCase):
         self.assertEqual(self.v.run("cat /etc/help | sort -r").splitlines(), want[::-1])
 
 
+class Touch(unittest.TestCase):
+    """touch."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.v = Vice(copy_image("touch"))
+        cls.v.wait_shell()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.v.close()
+
+    def test_new_file(self):
+        self.assertEqual(self.v.run("touch /home/t1 ; echo $?"), "0")
+        self.assertEqual(self.v.run("ls -l /home/t1"), "-      0 /home/t1")
+        self.v.run("rm /home/t1")
+
+    def test_several_names(self):
+        self.v.run("touch /home/t2 /home/t3")
+        self.assertEqual(self.v.run("ls /home/t2"), "/home/t2")
+        self.assertEqual(self.v.run("ls /home/t3"), "/home/t3")
+        self.v.run("rm /home/t2 /home/t3")
+
+    def test_existing_file_stays(self):
+        self.v.run("echo hi > /home/t4")
+        self.assertEqual(self.v.run("touch /home/t4 ; echo $?"), "0")
+        self.assertEqual(self.v.run("cat /home/t4"), "hi")
+        self.v.run("rm /home/t4")
+
+    def test_directory_and_device(self):
+        self.assertEqual(self.v.run("touch /home ; echo $?"), "0")
+        self.assertEqual(self.v.run("touch /dev/null ; echo $?"), "0")
+
+    def test_bad_path_goes_on(self):
+        out = self.v.run("touch /x/y /home/t5 ; echo $?")
+        self.assertIn("no such file", out.replace("\n", ""))
+        self.assertEqual(out.splitlines()[-1], "1")
+        self.assertEqual(self.v.run("ls /home/t5"), "/home/t5")
+        self.v.run("rm /home/t5")
+
+    def test_usage(self):
+        self.assertEqual(self.v.run("touch ; echo $?"), "usage: touch name...\n1")
+
+
 if __name__ == "__main__":
     unittest.main()
