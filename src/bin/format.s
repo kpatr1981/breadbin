@@ -167,7 +167,7 @@ c64fs:  ; BAM: nothing free for the drive's DOS any more
         jsr wr
         ; superblock
         jsr clear
-        ldy #4
+        ldy #C64FS_MAGIC_LEN-1
 @mg:    lda magic,y
         sta blk,y
         dey
@@ -356,7 +356,7 @@ pdrive: lda drive
         jmp print_dec
 
 .segment "RODATA"
-magic:     .byte "C64FS"
+magic:     .byte C64FS_MAGIC
 def_name:  .byte "breadbin", 0
 s_cbm:     .byte "cbm", 0
 s_c64fs:   .byte "c64fs", 0

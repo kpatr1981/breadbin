@@ -55,7 +55,6 @@ MAJ_NULL = 0
 MAJ_CON  = 1
 
 ; c64fs
-SB_MAGIC_LEN = 5
 INO_SIZE   = 32
 NDIRECT    = 12
 DIRENT     = 16

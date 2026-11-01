@@ -67,12 +67,12 @@ bm_i:    .res 1
 .export bm_alloc
 .export sb_ok, fs_name2, nm_dev, nm_ino, dl_off, dl_ino, f_done, dir_put
 .export bfree, mnt_active, mnt_ino, fs_count_inodes, sb_ninodes, ci_load_type
-.export inode_blk, s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi
+.export fs_magic, inode_blk, s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi
 .export mt_used, mt_pdev, mt_pino, mt_dev, mt_path, mnt_point, mnt_of_dev, mount_dev
 .import cbm_iget, cbm_lookup
 
 .segment "RODATA"
-magic:  .byte "C64FS"
+fs_magic: .byte C64FS_MAGIC
 s_dot:  .byte ".", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 s_dotdot: .byte "..", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 s_tmp:  .byte "tmp", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -164,9 +164,9 @@ mount_dev:
         lda tmp3
         jsr bread
         bcs @r
-        ldy #4
+        ldy #C64FS_MAGIC_LEN-1
 @m:     lda (bp),y
-        cmp magic,y
+        cmp fs_magic,y
         bne @bad
         dey
         bpl @m
@@ -1266,8 +1266,8 @@ fs_mkfs_reu:
         ldy #0
         jsr bget_buf
         stx io_w
-        ldy #4
-@m:     lda magic,y
+        ldy #C64FS_MAGIC_LEN-1
+@m:     lda fs_magic,y
         sta (bp),y
         dey
         bpl @m
