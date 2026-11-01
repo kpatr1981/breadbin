@@ -12,7 +12,7 @@
 .importzp bp, pp
 .import binval, cmdbuf, cmdlen, to_ascii, to_petscii, build_path, pbuf
 .import mt_used, mt_pdev, mt_pino, mt_dev, mt_path, mnt_point, mount_dev
-.import nm_dev, nm_ino, f_done
+.import nm_dev, nm_ino, f_done, fs_magic
 
 .export cbm_iget, cbm_lookup, cbm_read, cbm_readdir, cbm_open_write
 .export cbm_write, cbm_wclose, cbm_scratch, cbm_rename, cbm_fsinfo
@@ -32,9 +32,6 @@ mo_dev:  .res 1
 mo_pdev: .res 1
 mo_pino: .res 1
 mo_ent:  .res 1
-
-.segment "RODATA"
-magic:   .byte "C64FS"
 
 .segment "CODE"
 ; ---------------------------------------------------------------------
@@ -757,9 +754,9 @@ sys_mount:
         ldy #>376
         jsr bread
         bcs @nodisk
-        ldy #4
+        ldy #C64FS_MAGIC_LEN-1
 @m:     lda (bp),y
-        cmp magic,y
+        cmp fs_magic,y
         bne @cbm
         dey
         bpl @m

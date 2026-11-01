@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -111,6 +112,16 @@ class TestCX(unittest.TestCase):
 
     def test_bss_label(self):
         self.assertEqual(cx.bss_size("al 000123 .__BSS_SIZE__\n"), 0x123)
+
+
+class TestMagic(unittest.TestCase):
+    def test_mkimage_magic_matches_breadbin_inc(self):
+        # the kernel, fsck and format take the magic from breadbin.inc
+        inc = os.path.join(os.path.dirname(__file__), "..", "include", "breadbin.inc")
+        with open(inc) as f:
+            m = re.search(r'^\.define\s+C64FS_MAGIC\s+"([^"]*)"', f.read(), re.M)
+        self.assertIsNotNone(m, "C64FS_MAGIC not found in breadbin.inc")
+        self.assertEqual(M.MAGIC, m.group(1).encode("ascii"))
 
 
 if __name__ == "__main__":

@@ -149,3 +149,9 @@ SIGTERM = 15
 SIGCONT = 18
 SIGSTOP = 19
 SIGTSTP = 20
+
+; c64fs: the superblock starts with this magic. It is the only thing a
+; released kernel checks, so an incompatible format change changes it here
+; (tools/mkimage.py has its own copy, checked against this one by a test).
+.define C64FS_MAGIC "C64FS"
+C64FS_MAGIC_LEN = .strlen(C64FS_MAGIC)
