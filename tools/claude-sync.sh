@@ -1,5 +1,5 @@
 #!/bin/sh
-# Claude Code hook (SessionStart, UserPromptSubmit; see .claude/settings.json).
+# Claude Code hook (SessionStart, UserPromptSubmit), opt-in: see "Working together" in CLAUDE.md.
 # Before every prompt: fetch, fast-forward the current branch, and tell Claude
 # what arrived. Claude Code reads CLAUDE.md only when a session starts, so a
 # changed CLAUDE.md is printed here in full. Never blocks: it always exits 0.

@@ -51,9 +51,23 @@ does, `docs/programming.md` for the system calls and memory map, and
 Two people work on this repo, each with their own Claude session. They share what they know through this file,
 `docs/` and the git history, not through Claude's local memory, which stays on each machine.
 
-- `.claude/settings.json` runs `tools/claude-sync.sh` at session start and before every prompt. It fetches,
+- Collaborators switch on `tools/claude-sync.sh` in their own `.claude/settings.local.json` (git ignores it, so
+  nobody else who clones this public repo runs it). It runs at session start and before every prompt: it fetches,
   fast-forwards the current branch, and prints new commits and, if it changed, the new `CLAUDE.md`. When that
-  output appears, the new `CLAUDE.md` text replaces the one loaded at session start.
+  output appears, the new `CLAUDE.md` text replaces the one loaded at session start. The settings to add:
+
+  ```json
+  {
+    "hooks": {
+      "SessionStart": [
+        { "hooks": [ { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/tools/claude-sync.sh\"", "timeout": 30 } ] }
+      ],
+      "UserPromptSubmit": [
+        { "hooks": [ { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/tools/claude-sync.sh\"", "timeout": 30 } ] }
+      ]
+    }
+  }
+  ```
 - Lasting rules and lessons go here, in a commit of their own (`docs: CLAUDE.md ...`), pushed straight away so the
   other session picks them up. Keep it short: no session notes or status.
 - Plans and designs go in `docs/`; who does what goes in GitHub issues.
