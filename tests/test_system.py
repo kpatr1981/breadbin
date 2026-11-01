@@ -11,12 +11,18 @@ from vicetest import Vice  # noqa: E402
 IMAGE = os.path.join(ROOT, "build", "breadbin.d64")
 
 
+def scratch(name):
+    """A file in build/ of this run's own, so suites can run side by side."""
+    base, ext = os.path.splitext(name)
+    return os.path.join(ROOT, "build", "%s-%d%s" % (base, os.getpid(), ext))
+
+
 class Boot(unittest.TestCase):
     """One VICE session for a sequence of checks (booting is the slow part)."""
 
     @classmethod
     def setUpClass(cls):
-        cls.img = os.path.join(ROOT, "build", "test.d64")
+        cls.img = scratch("test.d64")
         with open(IMAGE, "rb") as f, open(cls.img, "wb") as g:
             g.write(f.read())
         cls.v = Vice(cls.img)
@@ -284,7 +290,7 @@ class Persistence(unittest.TestCase):
     """Files written by Breadbin survive a reboot and are readable on the host."""
 
     def test_write_reboot_read(self):
-        img = os.path.join(ROOT, "build", "persist.d64")
+        img = scratch("persist.d64")
         with open(IMAGE, "rb") as f, open(img, "wb") as g:
             g.write(f.read())
         with Vice(img) as v:
@@ -341,7 +347,7 @@ class Drives(unittest.TestCase):
     """mount: normal C64 disks and Breadbin disks on drive 9."""
 
     def test_cbm_disk(self):
-        cbm = os.path.join(ROOT, "build", "t_cbm9.d64")
+        cbm = scratch("t_cbm9.d64")
         if os.path.exists(cbm):
             os.unlink(cbm)
         subprocess.run(["c1541", "-format", "cbmdisk,cb", "d64", cbm,
@@ -369,13 +375,13 @@ class Drives(unittest.TestCase):
         self.assertIn('"h2"', d)
         self.assertIn('"new"', d)
         self.assertNotIn('"motd"', d)
-        out = os.path.join(ROOT, "build", "t_h2.txt")
+        out = scratch("t_h2.txt")
         subprocess.run(["c1541", cbm, "-read", "h2,s", out], capture_output=True)
         with open(out, "rb") as f, open(os.path.join(ROOT, "rootfs", "etc", "help"), "rb") as g:
             self.assertEqual(f.read(), g.read())
 
     def test_breadbin_disk(self):
-        img9 = os.path.join(ROOT, "build", "t_c64fs9.d64")
+        img9 = scratch("t_c64fs9.d64")
         with open(IMAGE, "rb") as f, open(img9, "wb") as g:
             g.write(f.read())
         with Vice(IMAGE, extra=["-drive9type", "1541", "-9", img9]) as v:
@@ -397,7 +403,7 @@ class Drives(unittest.TestCase):
         self.assertEqual(out.stdout, "hi\n")
 
     def test_format(self):
-        blank = os.path.join(ROOT, "build", "t_blank9.d64")
+        blank = scratch("t_blank9.d64")
         with open(blank, "wb") as f:
             f.write(bytes(174848))
         with Vice(IMAGE, extra=["-drive9type", "1541", "-9", blank]) as v:
