@@ -46,6 +46,18 @@ does, `docs/programming.md` for the system calls and memory map, and
   Output must fit a 40-column screen.
 - **New commands** also go in the README's command list and in `rootfs/etc/help`, with tests.
 
+## Working together
+
+Two people work on this repo, each with their own Claude session. They share what they know through this file,
+`docs/` and the git history, not through Claude's local memory, which stays on each machine.
+
+- `.claude/settings.json` runs `tools/claude-sync.sh` at session start and before every prompt. It fetches,
+  fast-forwards the current branch, and prints new commits and, if it changed, the new `CLAUDE.md`. When that
+  output appears, the new `CLAUDE.md` text replaces the one loaded at session start.
+- Lasting rules and lessons go here, in a commit of their own (`docs: CLAUDE.md ...`), pushed straight away so the
+  other session picks them up. Keep it short: no session notes or status.
+- Plans and designs go in `docs/`; who does what goes in GitHub issues.
+
 ## Commits
 
 - One feature or fix per commit, with its tests. Message style: `feat: ...`, `fix: ...`, `test: ...`, `build: ...`, `docs: ...`,
