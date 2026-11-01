@@ -432,5 +432,30 @@ class Drives(unittest.TestCase):
         self.assertIn('"note"', d)
 
 
+class FormatV2(unittest.TestCase):
+    """Format 2 (magic C64F2) and format 1 disks keep apart in both directions."""
+
+    def test_kernel_0_4_refuses_a_format_2_disk(self):
+        # tests/data/breadbin-0.4.prg is the kernel of the 0.4 release
+        import mkimage
+        img = scratch("t_old_kernel.d64")
+        mkimage.build(img, os.path.join(ROOT, "tests", "data", "breadbin-0.4.prg"),
+                      os.path.join(ROOT, "build", "root"), ["console:1", "null:0"], version=2)
+        with Vice(img) as v:
+            v.wait_for("kernel panic: cannot mount root", timeout=90)
+            self.assertNotIn("login", v.screen())
+
+    def test_format_1_disk_is_not_mounted_as_c64fs(self):
+        import mkimage
+        img9 = scratch("t_v1_9.d64")
+        mkimage.build(img9, os.path.join(ROOT, "build", "breadbin.prg"),
+                      os.path.join(ROOT, "build", "root"), [], version=1)
+        with Vice(IMAGE, extra=["-drive9type", "1541", "-9", img9]) as v:
+            v.wait_shell()
+            self.assertEqual(v.run("mount 9 /mnt"), "")
+            self.assertIn("drive 9 on /mnt (cbm dos)", v.run("mount"))
+            self.assertEqual(v.run("ls /mnt").split(), ["breadbin"])
+
+
 if __name__ == "__main__":
     unittest.main()

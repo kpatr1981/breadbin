@@ -53,7 +53,7 @@ A 1541 disk has 683 sectors of 256 bytes: 35 tracks with 17 to 21 sectors each. 
 | 357 – 375 (track 18) | the CBM DOS directory and BAM, left for the drive's DOS |
 | 376 | c64fs superblock |
 | 377 | block bitmap |
-| 378 – 393 | inode table (16 blocks, 128 inodes) |
+| 378 – 409 | inode table (32 blocks, 128 inodes) |
 | everything else | file and directory data |
 
 On the boot disk, the CBM directory on track 18 lists a single file, `BREADBIN`: the kernel, which `LOAD"*",8,1` loads. Its sectors start at block 0. Every sector of the disk is marked used in the CBM BAM, so the drive's own DOS never writes over c64fs. That's why other C64 software sees the disk as full.
@@ -62,22 +62,23 @@ On the boot disk, the CBM directory on track 18 lists a single file, `BREADBIN`:
 
 | Offset | Size | Field |
 |---|---|---|
-| 0 | 5 | magic `C64FS` |
-| 5 | 1 | version (1) |
+| 0 | 5 | magic `C64F2` |
+| 5 | 1 | version (2) |
 | 6 | 2 | number of blocks (683) |
 | 8 | 1 | number of inodes (128) |
 | 9 | 2 | bitmap block (377) |
 | 11 | 2 | first inode block (378) |
-| 13 | 1 | inode blocks (16) |
+| 13 | 1 | inode blocks (32) |
 | 14 | 1 | root directory inode (1) |
+| 15 | 4 | `last_time`: the newest time the filesystem has seen (seconds since 1970, local time; 0 until the kernel keeps time) |
 
 ### Bitmap (block 377)
 
 There is one bit per block, and a set bit means used. A block of 256 bytes covers 2048 blocks, so bits 683 to 2047 are always set. Block 0 is always used too, because block number 0 inside an inode means "no block here".
 
-### Inodes (blocks 378–393)
+### Inodes (blocks 378–409)
 
-An inode is 32 bytes, 8 per block. Inode 0 is reserved and inode 1 is the root directory.
+An inode is 64 bytes, 4 per block. Inode 0 is reserved and inode 1 is the root directory.
 
 | Offset | Size | Field |
 |---|---|---|
@@ -87,6 +88,9 @@ An inode is 32 bytes, 8 per block. Inode 0 is reserved and inode 1 is the root d
 | 5 | 1 | device major number (0 = `/dev/null`, 1 = `/dev/console`) |
 | 6 | 24 | 12 direct block numbers, 2 bytes each |
 | 30 | 2 | indirect block: a block holding 128 more block numbers |
+| 32 | 4 | `mtime`: contents last changed (seconds since 1970, local time; 0 = unknown) |
+| 36 | 4 | `ctime`: inode last changed |
+| 40 | 24 | reserved, zero |
 
 12 direct blocks plus 128 through the indirect block give a largest file of 140 × 256 = 35,840 bytes, more than a C64 can hold in memory anyway.
 
@@ -102,7 +106,7 @@ While the disk is busy, every other process waits: the bus transfer can't be int
 
 ## The RAM disk (`/tmp`)
 
-With a RAM Expansion Unit, or a GeoRAM when there is no REU, the kernel formats it as c64fs at every boot and mounts it at `/tmp`. The layout is the same idea with different block numbers: superblock at block 0, the bitmap from block 1 (one bitmap block per 2048 blocks, that is per 8 banks of 64 KB), then 32 inode blocks (255 inodes). Its size is that of the REU, up to 128 banks (32768 blocks, 8 MB), less the three banks that keep the copy of drive 8 when the REU has four or more. It is fast, and it is **empty after every reboot**. Without an REU, `/tmp` is an ordinary directory on the boot disk.
+With a RAM Expansion Unit, or a GeoRAM when there is no REU, the kernel formats it as c64fs at every boot and mounts it at `/tmp`. The layout is the same idea with different block numbers: superblock at block 0, the bitmap from block 1 (one bitmap block per 2048 blocks, that is per 8 banks of 64 KB), then 64 inode blocks (255 inodes). Its size is that of the REU, up to 128 banks (32768 blocks, 8 MB), less the three banks that keep the copy of drive 8 when the REU has four or more. It is fast, and it is **empty after every reboot**. Without an REU, `/tmp` is an ordinary directory on the boot disk.
 
 ## Normal C64 disks (CBM DOS)
 
@@ -138,6 +142,16 @@ python3 tools/mkimage.py build data.d64 --boot build/breadbin.prg --root myfolde
 python3 tools/mkimage.py ls  build/breadbin.d64 /home
 python3 tools/mkimage.py cat build/breadbin.d64 /home/readme
 ```
+
+### Disks from Breadbin 0.4 and earlier
+
+Those use format 1 (magic `C64FS`, 32-byte inodes without times), which this kernel doesn't mount: as the boot disk it stops with "cannot mount root filesystem", and in drive 9–11 the disk shows up as a normal C64 disk holding only the boot file. Old kernels likewise refuse format 2 disks, because they check only the magic. Convert an old image on the computer you build on; the contents are kept, and every file gets the time of the conversion:
+
+```sh
+python3 tools/mkimage.py upgrade old.d64 new.d64 --boot build/breadbin.prg
+```
+
+`--boot` puts the new kernel on a boot disk; leave it out for a data disk.
 
 `make` uses the same tool to build `build/breadbin.d64` from `rootfs/` and the compiled programs. For normal C64 disk images, use VICE's `c1541`, for example `c1541 -format "mydisk,md" d64 mydisk.d64`.
 

@@ -67,7 +67,7 @@ bm_i:    .res 1
 .export bm_alloc
 .export sb_ok, fs_name2, nm_dev, nm_ino, dl_off, dl_ino, f_done, dir_put
 .export bfree, mnt_active, mnt_ino, fs_count_inodes, sb_ninodes, ci_load_type
-.export fs_magic, inode_blk, s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi
+.export inode_blk, s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi
 .export mt_used, mt_pdev, mt_pino, mt_dev, mt_path, mnt_point, mnt_of_dev, mount_dev
 .import cbm_iget, cbm_lookup
 
@@ -170,8 +170,12 @@ mount_dev:
         bne @bad
         dey
         bpl @m
+        ldy #5
+        lda (bp),y
+        cmp #C64FS_VERSION
+        bne @bad
         ldx tmp3
-        ldy #6
+        iny
         lda (bp),y
         sta sb_nblocks_lo,x
         iny
@@ -211,7 +215,6 @@ inode_blk:
         txa
         lsr a
         lsr a
-        lsr a
         ldx tmp3
         clc
         adc sb_istart_lo,x
@@ -237,13 +240,7 @@ iget:
         jsr bread
         bcs @r
         lda ci_ino
-        and #7
-        asl a
-        asl a
-        asl a
-        asl a
-        asl a
-        tay
+        jsr ino_off
         ldx #0
 @l:     lda (bp),y
         sta ci,x
@@ -271,13 +268,7 @@ iput:
         bcs @r
         stx tmp2
         lda ci_ino
-        and #7
-        asl a
-        asl a
-        asl a
-        asl a
-        asl a
-        tay
+        jsr ino_off
         ldx #0
 @l:     lda ci,x
         sta (bp),y
@@ -291,6 +282,15 @@ iput:
 
 ci_load_type:
         lda ci+I_TYPE
+        rts
+
+; ino_off: A = ino -> Y = (ino & 3) * 64, its offset in the inode block
+ino_off:
+        and #3
+        lsr a
+        ror a
+        ror a
+        tay
         rts
 
 ; ialloc: A = dev, X = type -> A = new inode number, ci = that inode
@@ -1233,8 +1233,8 @@ nameiparent:
 ; ---------------------------------------------------------------------
 ; fs_mkfs_reu: format the REU (or GeoRAM) as c64fs: all of it, up to 128
 ; banks (32768 blocks), less what the drive 8 copy uses (rd_banks).
-; Superblock 0, bitmap 1..nbm, 32 inode blocks.
-RD_INOBLK = 32
+; Superblock 0, bitmap 1..nbm, 64 inode blocks (255 inodes).
+RD_INOBLK = 64
 fs_mkfs_reu:
         lda #1
         sta ci_dev
@@ -1272,7 +1272,7 @@ fs_mkfs_reu:
         dey
         bpl @m
         ldy #5
-        lda #1              ; version
+        lda #C64FS_VERSION
         sta (bp),y
         iny
         lda #0

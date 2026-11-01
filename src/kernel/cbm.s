@@ -12,7 +12,7 @@
 .importzp bp, pp
 .import binval, cmdbuf, cmdlen, to_ascii, to_petscii, build_path, pbuf
 .import mt_used, mt_pdev, mt_pino, mt_dev, mt_path, mnt_point, mount_dev
-.import nm_dev, nm_ino, f_done, fs_magic
+.import nm_dev, nm_ino, f_done
 
 .export cbm_iget, cbm_lookup, cbm_read, cbm_readdir, cbm_open_write
 .export cbm_write, cbm_wclose, cbm_scratch, cbm_rename, cbm_fsinfo
@@ -748,26 +748,15 @@ sys_mount:
         bcs @r
         lda mo_dev
         jsr binval
-        ; a Breadbin disk?
-        lda mo_dev
-        ldx #<376
-        ldy #>376
-        jsr bread
-        bcs @nodisk
-        ldy #C64FS_MAGIC_LEN-1
-@m:     lda (bp),y
-        cmp fs_magic,y
-        bne @cbm
-        dey
-        bpl @m
-        ldx mo_dev
-        lda #FS_C64
-        sta dev_type,x
+        ; a Breadbin disk? (mount_dev checks the magic and the version)
         lda mo_dev
         ldx #<376
         ldy #>376
         jsr mount_dev
-        bcs @nodisk
+        bcs @cbm
+        ldx mo_dev
+        lda #FS_C64
+        sta dev_type,x
         jmp @add
 @cbm:   ; a CBM DOS disk: track 18 sector 0 is a BAM with format 'A'
         lda mo_dev

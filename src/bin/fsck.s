@@ -149,33 +149,21 @@ load:   lda path
         sec
         sbc bmblk
         sta nbm
-        ; inode blocks: (ninodes + 7) / 8
-        lda ninodes
-        clc
-        adc #7
-        ror a
-        lsr a
-        lsr a
+        lda sb+13           ; inode blocks
         sta niblk
-        ; inodes
+        ; inodes: the first 32 bytes of each (the times aren't checked)
         lda #0
         sta n
 @ib:    lda n
         cmp niblk
         bcs @done
-        clc
-        adc istart
-        sta blk
-        lda istart+1
-        adc #0
-        sta blk+1
-        lda n
-        clc
-        adc #>inodes
-        tax
-        lda #<inodes
-        jsr rdblk
+        jsr rd_iblk
         bcs @ioerr
+        ldy #0
+@g:     lda ibuf,x
+        sta (ptr2),y
+        jsr ib_next
+        bne @g
         inc n
         bne @ib
 @done:  clc
@@ -483,7 +471,6 @@ print_ino:
 ; ino_dirty: the inode block of inode n changed
 ino_dirty:
         lda n
-        lsr a
         lsr a
         lsr a
         tax
@@ -865,22 +852,61 @@ write_back:
         tax
         lda ibdirty,x
         beq @nx
-        txa
+        jsr rd_iblk         ; the block as it is, so the times stay
+        bcs @nx
+        ldy #0
+@p:     lda (ptr2),y
+        sta ibuf,x
+        jsr ib_next
+        bne @p
+        lda #<ibuf
+        ldx #>ibuf
+        jsr wrblk
+@nx:    inc n
+        bne @ib
+@bm:    jmp SYS_SYNC
+
+; rd_iblk: inode block n -> ibuf; ptr2 = its 4 inodes in inodes (32 bytes
+; each), X = Y = 0 for ib_next
+rd_iblk:
+        lda n
         clc
         adc istart
         sta blk
         lda istart+1
         adc #0
         sta blk+1
-        lda n
-        clc
-        adc #>inodes
+        lda n               ; ptr2 = inodes + n * 128
+        lsr a
         tax
-        lda #<inodes
-        jsr wrblk
-@nx:    inc n
-        bne @ib
-@bm:    jmp SYS_SYNC
+        lda #0
+        ror a
+        clc
+        adc #<inodes
+        sta ptr2
+        txa
+        adc #>inodes
+        sta ptr2+1
+        lda #<ibuf
+        ldx #>ibuf
+        jsr rdblk
+        ldx #0
+        rts
+
+; ib_next: step X (ibuf, 64 per inode) and Y (inodes, 32 per inode)
+; over the first 32 bytes of each inode; Z set after the fourth
+ib_next:
+        inx
+        iny
+        tya
+        and #31
+        bne @r
+        txa
+        clc
+        adc #32
+        tax
+        cpy #128
+@r:     rts
 
 ; problem: one more problem; ends its line
 problem:
@@ -937,7 +963,7 @@ dt:      .res 1
 ds:      .res 1
 ft:      .res 1
 fs:      .res 1
-ibdirty: .res 32
+ibdirty: .res 64
 sb:      .res 256
 bm:      .res 256
 used:    .res 256
