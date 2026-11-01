@@ -3,3 +3,4 @@ build/
 *.pyc
 __pycache__/
 .remember/
+.claude/settings.local.json
