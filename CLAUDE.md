@@ -40,7 +40,9 @@ does, `docs/programming.md` for the system calls and memory map, and
   Any change to that handshake must be checked by reading blocks both ways (fast and slow) and comparing: a boot alone
   looks fine with a corrupted last byte. The C64 side must only ever wait longer than needed. The drive code must stay under 256 bytes.
   On a timeout the kernel falls back to `U1` reads, which keeps SD2IEC working.
-- **Disk format changes** touch four places that must agree: the kernel, `tools/mkimage.py`, `src/bin/fsck.s` and `src/bin/format.s`.
+- **Disk format changes** touch five places that must agree: the kernel's mount code, `fs_mkfs_reu` in `src/kernel/fs.s`
+  (which formats the `/tmp` RAM disk itself), `tools/mkimage.py`, `src/bin/fsck.s` and `src/bin/format.s`.
+  An incompatible change also changes the `C64FS` magic, because released kernels check only the magic, not `VERSION`.
 - **Programs:** zero page `$23-$2F` is the program's own; `$30-$3F` belongs to the user library; `$08-$1F` and `$40+` are the kernel's.
   Errors go to stderr with `perr`, usage lines with `eprint`, and the exit code is non-zero on failure.
   Output must fit a 40-column screen.
