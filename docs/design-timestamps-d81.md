@@ -1,6 +1,6 @@
 # Design: file timestamps and .d81 support
 
-Status: draft for discussion, 2026-11-01, revised 2026-11-02 after review in issue #4; magic, `last_time` and two open questions settled the same day. Nothing here is implemented yet.
+Status: draft for discussion, 2026-11-01, revised 2026-11-02 after review in issue #4; magic, `last_time` and two open questions settled the same day. Step 1 (format v2) is implemented; steps 2–5 are not.
 
 ## Summary
 
@@ -127,7 +127,7 @@ Both changes ship under one format version 2. The order below keeps every step t
 
 ### Order of work
 
-1. **Format v2:** 64-byte inodes with zeroed time fields, the new magic, `VERSION` 2, the superblock's `last_time`, and the matching changes in `mkimage.py`, `fsck`, `format`, the kernel's inode code and the RAM disk format (`fs_mkfs_reu`). Existing tests must pass unchanged, plus a test that a v1 kernel refuses a v2 disk.
+1. **Format v2** (done): 64-byte inodes with zeroed time fields, the new magic, `VERSION` 2, the superblock's `last_time`, and the matching changes in `mkimage.py`, `fsck`, `format`, the kernel's inode code and the RAM disk format (`fs_mkfs_reu`). Existing tests must pass unchanged, plus a test that a v1 kernel refuses a v2 disk.
 2. **Kernel clock and stamping:** the epoch counter, stamping on create, write and inode change, the `utime` syscall, the larger `SYS_STAT` buffer, and `last_time` saved and restored.
 3. **Programs:** the `src/lib` date routine, then `date`, `touch`, `ls -l`, `stat`, `mv`, `cp`.
 4. **.d81 geometry:** per-device geometry in `blk.s`, `mkimage.py --d81`, drive detection, fast loader and REU copy off on a 1581.

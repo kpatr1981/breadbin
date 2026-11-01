@@ -15,7 +15,8 @@
 SB_BLOCK  = 376
 BM_BLOCK  = 377
 INO_START = 378
-INO_BLKS  = 16
+INO_BLKS  = 32           ; 4 inodes of 64 bytes per block: 128 inodes
+INO_SIZE  = 64
 ROOT_BLK  = 1
 BAM_BLOCK = 357
 
@@ -172,13 +173,13 @@ c64fs:  ; BAM: nothing free for the drive's DOS any more
         sta blk,y
         dey
         bpl @mg
-        lda #1
+        lda #C64FS_VERSION
         sta blk+5
         lda #<683
         sta blk+6
         lda #>683
         sta blk+7
-        lda #INO_BLKS*8
+        lda #INO_BLKS*4
         sta blk+8
         lda #<BM_BLOCK
         sta blk+9
@@ -195,7 +196,7 @@ c64fs:  ; BAM: nothing free for the drive's DOS any more
         lda #<SB_BLOCK
         ldx #>SB_BLOCK
         jsr wr
-        ; bitmap: blocks 0-1, 357-393 and everything past 682 are used
+        ; bitmap: blocks 0-1, 357-409 and everything past 682 are used
         jsr clear
         lda #$03
         sta blk                 ; blocks 0 (never usable) and 1 (root dir)
@@ -205,9 +206,9 @@ c64fs:  ; BAM: nothing free for the drive's DOS any more
         inx
         bne @n2
         iny
-@n2:    cpy #>394
+@n2:    cpy #>(INO_START+INO_BLKS)
         bne @u1
-        cpx #<394
+        cpx #<(INO_START+INO_BLKS)
         bne @u1
         ldx #<683
         ldy #>683
@@ -229,12 +230,12 @@ c64fs:  ; BAM: nothing free for the drive's DOS any more
         lda #$ff
         sta blk                 ; inode 0
         lda #2
-        sta blk+32              ; inode 1: directory
-        sta blk+33              ; nlink 2
+        sta blk+INO_SIZE        ; inode 1: directory
+        sta blk+INO_SIZE+1      ; nlink 2
         lda #32
-        sta blk+34              ; size: two entries
+        sta blk+INO_SIZE+2      ; size: two entries
         lda #ROOT_BLK
-        sta blk+32+6            ; direct[0]
+        sta blk+INO_SIZE+6      ; direct[0]
 @iw:    lda ib
         clc
         adc #<INO_START

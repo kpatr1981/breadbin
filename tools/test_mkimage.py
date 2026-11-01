@@ -49,7 +49,7 @@ class TestImage(unittest.TestCase):
 
     def test_superblock(self):
         sb = self.img.block(376)
-        self.assertEqual(bytes(sb[0:5]), b"C64FS")
+        self.assertEqual(bytes(sb[0:5]), b"C64F2")
         self.assertEqual(sb[8], 128)
         self.assertEqual(sb[9] | sb[10] << 8, 377)
 
@@ -114,7 +114,7 @@ class TestFormat2(unittest.TestCase):
             f.write(bytes(range(256)) * 10 + b"end")
         self.v1 = os.path.join(t, "v1.d64")
         self.v2 = os.path.join(t, "v2.d64")
-        M.build(self.v1, self.bootf, self.root, ["console:1", "null:0"])
+        M.build(self.v1, self.bootf, self.root, ["console:1", "null:0"], version=1)
         M.build(self.v2, self.bootf, self.root, ["console:1", "null:0"], version=2)
         self.fs1 = M.FS(M.load(self.v1))
         self.fs2 = M.FS(M.load(self.v2))
@@ -122,7 +122,8 @@ class TestFormat2(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_default_is_still_format_1(self):
+    def test_default_is_format_2(self):
+        self.assertEqual(M.DEFAULT_VERSION, 2)
         self.assertEqual(self.fs1.version, 1)
         self.assertEqual(bytes(self.fs1.img.block(376)[0:6]), b"C64FS\x01")
 
@@ -210,7 +211,7 @@ class TestUpgrade(unittest.TestCase):
             f.write(self.boot)
         self.v1 = os.path.join(t, "v1.d64")
         self.up = os.path.join(t, "up.d64")
-        M.build(self.v1, self.bootf, root, ["console:1", "null:0"])
+        M.build(self.v1, self.bootf, root, ["console:1", "null:0"], version=1)
         M.upgrade(self.v1, self.up)
         self.old = M.FS(M.load(self.v1))
         self.new = M.FS(M.load(self.up))
@@ -278,6 +279,13 @@ class TestMagic(unittest.TestCase):
             m = re.search(r'^\.define\s+C64FS_MAGIC\s+"([^"]*)"', f.read(), re.M)
         self.assertIsNotNone(m, "C64FS_MAGIC not found in breadbin.inc")
         self.assertEqual(M.MAGIC, m.group(1).encode("ascii"))
+
+    def test_mkimage_version_matches_breadbin_inc(self):
+        inc = os.path.join(os.path.dirname(__file__), "..", "include", "breadbin.inc")
+        with open(inc) as f:
+            m = re.search(r'^C64FS_VERSION\s*=\s*(\d+)', f.read(), re.M)
+        self.assertIsNotNone(m, "C64FS_VERSION not found in breadbin.inc")
+        self.assertEqual(M.VERSION, int(m.group(1)))
 
 
 if __name__ == "__main__":

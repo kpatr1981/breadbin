@@ -202,6 +202,7 @@ class Fsck(unittest.TestCase):
         motd = fs.lookup("/etc/motd")
         ino = fs.read_inode(motd)
         ino["nlink"] = 3                                    # wrong link count
+        ino["mtime"], ino["ctime"] = 1700000000, 1700000001 # must survive fsck -f
         fs.write_inode(motd, ino)
         orphan = fs.alloc_inode(mkimage.T_FILE)             # in no directory
         fs.write_file(orphan, b"lost data\n")
@@ -229,6 +230,9 @@ class Fsck(unittest.TestCase):
             self.assertEqual(v.run("fsck", timeout=300), "clean")
             self.assertIn("welcome", v.run("cat /etc/motd"))
             self.assertNotIn("ghost", v.run("ls /home"))
+        with open(img, "rb") as f:
+            after = mkimage.FS(mkimage.Image(f.read())).read_inode(motd)
+        self.assertEqual((after["nlink"], after["mtime"], after["ctime"]), (1, 1700000000, 1700000001))
 
 
 class BigRAMDisk(unittest.TestCase):

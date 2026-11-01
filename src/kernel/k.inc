@@ -55,7 +55,7 @@ MAJ_NULL = 0
 MAJ_CON  = 1
 
 ; c64fs
-INO_SIZE   = 32
+INO_SIZE   = 64         ; 4 per block
 NDIRECT    = 12
 DIRENT     = 16
 NAME_MAX   = 14
@@ -66,6 +66,8 @@ I_SIZE  = 2
 I_MAJOR = 5
 I_DIRECT = 6
 I_INDIR = 30
+I_MTIME = 32            ; 4 bytes, epoch
+I_CTIME = 36
 
 ; ZP scratch saved per process ($08-$1F); r0-r2 are $02-$07
 r3 = $08

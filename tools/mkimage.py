@@ -7,7 +7,7 @@ filesystem. Every block is marked allocated in the CBM BAM so the drive's
 own DOS never writes over c64fs.
 
 Two c64fs formats exist. Format 1 (magic C64FS) has 32-byte inodes and is
-what released kernels read. Format 2 (magic C64F2) has 64-byte inodes with
+what kernels up to 0.4 read. Format 2 (magic C64F2) has 64-byte inodes with
 mtime and ctime and a last_time in the superblock; see
 docs/design-timestamps-d81.md. Times are seconds since 1970 in local time.
 
@@ -80,7 +80,7 @@ LAYOUTS = {
     1: Layout(1, b"C64FS", 32, 16),   # 128 inodes
     2: Layout(2, b"C64F2", 64, 32),   # 128 inodes, with times
 }
-DEFAULT_VERSION = 1                   # what the kernel reads today
+DEFAULT_VERSION = 2                   # what the kernel reads
 
 MAGIC = LAYOUTS[DEFAULT_VERSION].magic   # = C64FS_MAGIC in include/breadbin.inc
 VERSION = DEFAULT_VERSION

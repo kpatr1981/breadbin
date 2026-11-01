@@ -148,7 +148,7 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`, `fg`, `bg`. CTRL-Z stops the fore
 | `src/bin/` | user programs |
 | `src/lib/` | the user library linked into programs |
 | `include/breadbin.inc` | the system-call interface for programs |
-| `tools/mkimage.py` | builds and inspects disk images (`ls`, `cat` subcommands) |
+| `tools/mkimage.py` | builds and inspects disk images (`ls`, `cat` subcommands); `upgrade` converts a disk from 0.4 or earlier |
 | `tools/cx.py` | makes relocatable executables |
 | `tools/vicetest.py` | drives VICE for the automated tests |
 | `docs/filesystem.md` | disks, mounting, `format`, and the on-disk layout |

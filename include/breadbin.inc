@@ -154,5 +154,6 @@ SIGTSTP = 20
 ; c64fs: the superblock starts with this magic. It is the only thing a
 ; released kernel checks, so an incompatible format change changes it here
 ; (tools/mkimage.py has its own copy, checked against this one by a test).
-.define C64FS_MAGIC "C64FS"
+.define C64FS_MAGIC "C64F2"
 C64FS_MAGIC_LEN = .strlen(C64FS_MAGIC)
+C64FS_VERSION = 2       ; superblock byte 5
