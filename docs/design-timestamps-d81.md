@@ -1,6 +1,6 @@
 # Design: file timestamps and .d81 support
 
-Status: draft for discussion, 2026-11-01, revised 2026-11-02 after review in issue #4. Nothing here is implemented yet.
+Status: draft for discussion, 2026-11-01, revised 2026-11-02 after review in issue #4; magic, `last_time` and two open questions settled the same day. Nothing here is implemented yet.
 
 ## Summary
 
@@ -28,7 +28,7 @@ The inode grows from 32 to 64 bytes. The first 32 bytes stay exactly as today, s
 | 30–31 | indirect block pointer | unchanged |
 | 32–35 | mtime (epoch, little-endian) | new |
 | 36–39 | ctime (epoch, little-endian) | new |
-| 40–63 | reserved, zero | new |
+| 40–63 | reserved, zero (kept for permissions and an owner) | new |
 
 The other option, taking 2 of the 12 direct pointers for one 4-byte time, costs no space. But files over 2.5 KB would need the indirect block 512 bytes sooner, which means slower reads. It also leaves no room for `ctime` or later fields.
 
@@ -46,8 +46,8 @@ The other option, taking 2 of the 12 direct pointers for one 4-byte time, costs 
 - **Stamping:** create sets `mtime` and `ctime`. A write that changes data sets `mtime` and `ctime`. Link, unlink and rename set `ctime` only.
 - **New syscall `utime(path)`:** sets `mtime` and `ctime` to now. `touch` uses it on existing files.
 - **`SYS_STAT`:** its buffer is 8 bytes today (type, nlink, size, inode, device, major). It grows to 16 to carry `mtime` and `ctime`, so `ls` and `stat` change with it.
-- **Superblock:** a `last_time` field, written on `sync` and unmount, read at mount.
-- **Magic:** v2 disks get a new magic in place of `C64FS`. Released kernels (`mount_dev` in `fs.s`, and the disk check in `cbm.s`) compare only the 5-byte magic and never read `VERSION`, so a 0.4 kernel would mount a v2 disk as v1 and corrupt it. With a new magic it treats the disk as not c64fs. v2 kernels check both the magic and `VERSION`. The magic is defined twice today (`cbm.s:37`, `fs.s:75`); it becomes one shared definition.
+- **Superblock:** a `last_time` field at offset 15 (4 bytes, epoch, little-endian), written on `sync` and unmount, read at mount. `mkimage.py` sets it to the build time or the newest file time, whichever is later.
+- **Magic:** v2 disks get the magic `C64F2` in place of `C64FS`. It keeps 5 bytes, so `VERSION` stays at offset 5 and the length-5 compares stay as they are. Released kernels (`mount_dev` in `fs.s`, and the disk check in `cbm.s`) compare only the 5-byte magic and never read `VERSION`, so a 0.4 kernel would mount a v2 disk as v1 and corrupt it. With a new magic it treats the disk as not c64fs. v2 kernels check both the magic and `VERSION`. The magic is defined twice today (`cbm.s:37`, `fs.s:75`); it becomes one shared definition.
 - **RAM disk:** `fs_mkfs_reu` writes the v2 magic, `VERSION` 2 and the 64-block inode table.
 
 ### Where the time comes from
@@ -65,7 +65,7 @@ Times are stored as local time with no time zone, since there is nowhere to conf
 | Program | Change |
 | --- | --- |
 | `touch` | Existing file: call `utime`. Missing file: create it, as today. |
-| `ls -l` | Show `mtime`. Lines must fit 40 columns, so a short form such as `26-11-01 23:25`. |
+| `ls -l` | Show `mtime`. Lines must fit 40 columns: `YY-MM-DD hh:mm`, e.g. `26-11-01 23:25` (14 characters, sorts as text, no month names). |
 | `stat` | Show `mtime` and `ctime` in full. |
 | `date` | Show and set the full date and time from the epoch counter. |
 | `cp` | The copy gets the current time. |
@@ -145,8 +145,8 @@ Both changes ship under one format version 2. The order below keeps every step t
 
 - [x] Which kernel RAM budget is acceptable for this? The 561 free bytes below the jump table, so the program pool doesn't shrink. `ci` alone takes 32 of them.
 - [x] Should a v2 kernel also mount v1 disks read-only, or only v2? Only v2; the new magic keeps the two apart in both directions.
-- [ ] Should the 24 reserved inode bytes become 12 more direct pointers (files up to 24 blocks without an indirect block)?
+- [x] Should the 24 reserved inode bytes become 12 more direct pointers? No. They would save files of 3–6 KB one indirect-block read, which the block cache often absorbs anyway, at the cost of kernel bytes and the only spare room in the inode. They stay reserved for permissions and an owner.
 - [ ] Which drive-type check is reliable on VICE, real 1581s and the Ultimate? `M-R` and the track 40 read to be tried on an Ultimate with its drive set to 1581 (issue #4).
 - [ ] Is reading the Ultimate's clock worth adding, and how much code does it take? Being looked into on an Ultimate 64 (issue #4).
-- [ ] Short date format for `ls -l` within 40 columns.
+- [x] Short date format for `ls -l` within 40 columns? `YY-MM-DD hh:mm`.
 - [ ] Who takes which part. Started in issue #4: drive detection and the Ultimate's clock, tested on an Ultimate 64 and Ultimate 64 Elite.
