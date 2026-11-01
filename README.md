@@ -157,7 +157,7 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`, `fg`, `bg`. CTRL-Z stops the fore
 
 ## How it works
 
-- **Memory.** BASIC ROM is banked out. The kernel lives at `$8000–$CEFF`, and programs get 256-byte pages from `$0800–$7FFF`.
+- **Memory.** BASIC ROM is banked out. The kernel lives at `$7F00–$CEFF` (plus process tables in the RAM under the KERNAL ROM), and programs get 256-byte pages from `$0800–$7EFF`.
 - **Context switch.** Each process has its own zero page `$02–$3F` and its slice of the stack page; both are saved and restored on every switch.
 - **Kernel preemption.** The kernel itself is not preemptible, so disk I/O is a critical section. The serial bus driver is not re-entrant.
 - **Executables (CX format).** Each program is linked twice, at `$0000` and at `$0100`. The bytes that differ by one are high bytes of addresses, and their offsets become the relocation table. The loader adds the load page to each of them.

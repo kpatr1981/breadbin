@@ -68,7 +68,7 @@ hello, world! (assembled on a c64)
 | `$0040–$00FF` | kernel: don't touch |
 | `$0100–$01FF` | the stack, shared by all processes: you get up to about 130 bytes of it |
 | `$0800–$7EFF` | the user pool: your program is loaded somewhere in here |
-| `$8000–$CEFF` | the kernel |
+| `$7F00–$CEFF` | the kernel |
 | `$CF00–$CFFF` | the system call jump table |
 | `$D000–$DFFF` | I/O |
 | `$E000–$FFFF` | KERNAL ROM (the kernel uses parts of it; programs shouldn't) |
