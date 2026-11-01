@@ -1,6 +1,6 @@
 # Design: file timestamps and .d81 support
 
-Status: draft for discussion, 2026-11-01. Nothing here is implemented yet.
+Status: draft for discussion, 2026-11-01, revised 2026-11-02 after review in issue #4. Nothing here is implemented yet.
 
 ## Summary
 
@@ -36,7 +36,8 @@ The other option, taking 2 of the 12 direct pointers for one 4-byte time, costs 
 
 - **Per file:** none. Data blocks and the 16-byte directory entries are unchanged.
 - **Per disk:** the inode table goes from 16 to 32 blocks to keep 128 inodes. That's 16 blocks (4 KB) once; free space on the boot image drops from 402 to 386 blocks. Keeping 16 blocks would cut the limit to 64 inodes, and the boot image already uses 59.
-- **Kernel RAM:** the working inode `ci` (`src/kernel/fs.s:37`) grows by 32 bytes, plus a 4-byte clock and the code to stamp inodes. The epoch-to-date conversion (32-bit division) stays out of the kernel.
+- **`/tmp` RAM disk:** `fs_mkfs_reu` (`src/kernel/fs.s`) formats the REU itself, with 255 inodes in 32 blocks (`RD_INOBLK`). With 64-byte inodes that table goes to 64 blocks (16 KB of REU) to keep 255 inodes, the most the 1-byte inode count allows.
+- **Kernel RAM:** the working inode `ci` (`src/kernel/fs.s:37`) grows by 32 bytes, plus a 4-byte clock and the code to stamp inodes. The epoch-to-date conversion (32-bit division) stays out of the kernel. The 0.4 link map leaves 561 bytes free between the end of BSS (`$CCCE`) and the jump table (`$CF00`). That space is already the kernel's, so this work should fit there and leave the program pool alone.
 
 ### Kernel changes
 
@@ -46,6 +47,8 @@ The other option, taking 2 of the 12 direct pointers for one 4-byte time, costs 
 - **New syscall `utime(path)`:** sets `mtime` and `ctime` to now. `touch` uses it on existing files.
 - **`SYS_STAT`:** its buffer is 8 bytes today (type, nlink, size, inode, device, major). It grows to 16 to carry `mtime` and `ctime`, so `ls` and `stat` change with it.
 - **Superblock:** a `last_time` field, written on `sync` and unmount, read at mount.
+- **Magic:** v2 disks get a new magic in place of `C64FS`. Released kernels (`mount_dev` in `fs.s`, and the disk check in `cbm.s`) compare only the 5-byte magic and never read `VERSION`, so a 0.4 kernel would mount a v2 disk as v1 and corrupt it. With a new magic it treats the disk as not c64fs. v2 kernels check both the magic and `VERSION`. The magic is defined twice today (`cbm.s:37`, `fs.s:75`); it becomes one shared definition.
+- **RAM disk:** `fs_mkfs_reu` writes the v2 magic, `VERSION` 2 and the 64-block inode table.
 
 ### Where the time comes from
 
@@ -73,7 +76,7 @@ Times are stored as local time with no time zone, since there is nowhere to conf
 
 ### Existing disks
 
-The simplest choice is that a v2 kernel mounts only v2 c64fs disks. `mkimage.py` builds v2 images and gives each file the host file's modification time. A host-side `mkimage.py upgrade` would convert a user's existing v1 .d64 with all times set to the conversion time. CBM DOS disks mounted under `/mnt` have no c64fs inodes; `ls -l` shows no time for them.
+The simplest choice is that a v2 kernel mounts only v2 c64fs disks, and the new magic makes a 0.4 kernel refuse them. `mkimage.py` builds v2 images and gives each file the host file's modification time. A host-side `mkimage.py upgrade` would convert a user's existing v1 .d64 with all times set to the conversion time. CBM DOS disks mounted under `/mnt` have no c64fs inodes; `ls -l` shows no time for them.
 
 ## .d81 support
 
@@ -105,7 +108,9 @@ Most of the work is mechanical geometry. The two real pieces are keeping the 154
 
 ### Disk layout on a .d81
 
-Same idea as the .d64: the CBM DOS directory holds only the boot file (the kernel), every block is marked allocated in the CBM BAM, and c64fs uses the rest. On the .d64 the superblock sits right after the directory track at 19/0. On the .d81 it would sit at 41/0 (block 1,600), followed by the 2 bitmap blocks and the inode table. Booting needs no kernel change: the C64's own `LOAD"*",8` finds the boot file in the track 40 directory.
+Same idea as the .d64: the CBM DOS directory holds only the boot file (the kernel), every block is marked allocated in the CBM BAM, and c64fs uses the rest. Booting needs no kernel change: the C64's own `LOAD"*",8` finds the boot file in the track 40 directory.
+
+The superblock stays at block 376 on both disk types, followed by the bitmap and the inode table. On the .d64 that is 19/0, right after the directory track. On the .d81 it is 10/16, an ordinary block, since the CBM BAM marks the whole disk allocated anyway. The c64fs bitmap marks track 40 (blocks 1,560–1,599, the CBM directory) as used. Block 376 is hard-coded in `fs_mount` (`fs.s`) and twice in the mount code in `cbm.s`; keeping it means none of that changes, and every disk type has its superblock in the same place. The cost is longer head seeks between the inode table and files near the end of the disk, which matters little next to the 1581's speed.
 
 ### Telling the drives apart
 
@@ -122,7 +127,7 @@ Both changes ship under one format version 2. The order below keeps every step t
 
 ### Order of work
 
-1. **Format v2:** 64-byte inodes with zeroed time fields, `VERSION` 2, the superblock's `last_time`, and the matching changes in `mkimage.py`, `fsck`, `format` and the kernel's inode code. Existing tests must pass unchanged.
+1. **Format v2:** 64-byte inodes with zeroed time fields, the new magic, `VERSION` 2, the superblock's `last_time`, and the matching changes in `mkimage.py`, `fsck`, `format`, the kernel's inode code and the RAM disk format (`fs_mkfs_reu`). Existing tests must pass unchanged, plus a test that a v1 kernel refuses a v2 disk.
 2. **Kernel clock and stamping:** the epoch counter, stamping on create, write and inode change, the `utime` syscall, the larger `SYS_STAT` buffer, and `last_time` saved and restored.
 3. **Programs:** the `src/lib` date routine, then `date`, `touch`, `ls -l`, `stat`, `mv`, `cp`.
 4. **.d81 geometry:** per-device geometry in `blk.s`, `mkimage.py --d81`, drive detection, fast loader and REU copy off on a 1581.
@@ -138,10 +143,10 @@ Both changes ship under one format version 2. The order below keeps every step t
 
 ### Open questions
 
-- [ ] Which kernel RAM budget is acceptable for this? `ci` alone grows 32 bytes.
-- [ ] Should a v2 kernel also mount v1 disks read-only, or only v2?
+- [x] Which kernel RAM budget is acceptable for this? The 561 free bytes below the jump table, so the program pool doesn't shrink. `ci` alone takes 32 of them.
+- [x] Should a v2 kernel also mount v1 disks read-only, or only v2? Only v2; the new magic keeps the two apart in both directions.
 - [ ] Should the 24 reserved inode bytes become 12 more direct pointers (files up to 24 blocks without an indirect block)?
-- [ ] Which drive-type check is reliable on VICE, real 1581s and the Ultimate?
-- [ ] Is reading the Ultimate's clock worth adding, and how much code does it take?
+- [ ] Which drive-type check is reliable on VICE, real 1581s and the Ultimate? `M-R` and the track 40 read to be tried on an Ultimate with its drive set to 1581 (issue #4).
+- [ ] Is reading the Ultimate's clock worth adding, and how much code does it take? Being looked into on an Ultimate 64 (issue #4).
 - [ ] Short date format for `ls -l` within 40 columns.
-- [ ] Who takes which part.
+- [ ] Who takes which part. Started in issue #4: drive detection and the Ultimate's clock, tested on an Ultimate 64 and Ultimate 64 Elite.
