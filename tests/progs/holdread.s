@@ -54,5 +54,5 @@ fd = $23
         lda #1
         jmp SYS_EXIT
 .segment "BSS"
-st:     .res 8
+st:     .res 16
 buf:    .res 256

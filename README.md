@@ -9,12 +9,12 @@ It is a real kernel, not a shell that prints canned output:
 - **Preemptive multitasking.** A timer interrupt drives a round-robin scheduler, so `cmd &` keeps running in the background while you type. Up to 12 processes.
 - **Real programs.** `ls`, `cat`, `grep` and the rest are separate relocatable executables in `/bin`. The shell asks the kernel to `spawn` them and `wait`s for them.
 - **Pipes and redirection.** `cat readme | grep unix | wc`, plus `>`, `>>` and `<`. A pipe is a kernel buffer: readers block when it is empty, writers block when it is full, and writing to a closed pipe raises `SIGPIPE`.
-- **A Unix filesystem on the 1541.** c64fs has inodes, real directories (`mkdir`, `cd`, `..`), files up to 35 KB, and `/dev/console` and `/dev/null` device nodes.
+- **A Unix filesystem on the 1541.** c64fs has inodes, real directories (`mkdir`, `cd`, `..`), files up to 35 KB, modification times (`ls -l`, `stat`, `touch`), and `/dev/console` and `/dev/null` device nodes.
 - **Signals and job control.** RUN/STOP sends `SIGINT` to the foreground job and CTRL-Z stops it; `fg` and `bg` bring it back, `jobs` and `ps` show it as stopped. `kill` sends any signal.
 - **REU and GeoRAM support.** If a RAM Expansion Unit (or, without one, a GeoRAM) is present, it is detected at boot, formatted, and mounted at `/tmp` as a fast RAM disk. Neither is required.
 - **More drives.** `mount 9 /mnt` attaches drive 9, 10 or 11. A Breadbin disk shows up with its directories. A normal C64 disk shows up as one flat directory that you can read, write (`cp`), `rm` and `mv`; the writes go through the drive's own DOS, so other C64 software can read the results.
 - **Users and screen.** There's a `login` with passwords (`passwd`, `whoami`), a full-screen editor (`edit`), colour `theme`s, shell wildcards (`*.bas`) and `jobs`.
-- **Stock hardware.** It runs on a stock C64 with a 1541, and the same disk boots with or without an REU. A C128 in C64 mode works too, with a 1541 or 1571. The clock (`date`) keeps time even on C64s powered from a DC supply, whose TOD clock input is dead: the kernel notices and drives it from the timer interrupt.
+- **Stock hardware.** It runs on a stock C64 with a 1541, and the same disk boots with or without an REU. A C128 in C64 mode works too, with a 1541 or 1571. The clock (`date`) runs from the timer interrupt, so it keeps time even on C64s powered from a DC supply, whose TOD clock input is dead. The C64 has no battery clock: set it with `date 2026-11-02 14:30`. Until then it starts from the newest time saved on the boot disk, so it never goes backwards.
 - **BASIC and an assembler.** Both run *on* the C64: `basic` is an integer BASIC, and `as` is a 6502 assembler that produces new Breadbin commands.
 
 ## Building
@@ -136,7 +136,7 @@ The boot disk is mounted at `/`. More drives work too: put a disk in drive 9, 10
 
 ## Commands
 
-`sh` `init` `login` `ls [-l] [-a]` `cat` `echo` `grep [-v] [-c]` `wc` `head [-n]` `tail [-n]` `sort [-r]` `tee [-a]` `more` `edit` `touch` `cp` `mv` `rm` `mkdir` `rmdir` `pwd` `stat` `hexdump` `ps` `kill [-sig]` `sleep` `free` `df` `mount` `umount` `format` `uptime` `date` `uname [-a]` `version` `whoami` `passwd` `theme` `help` `clear` `count` `basic` `as`
+`sh` `init` `login` `ls [-l] [-a]` `cat` `echo` `grep [-v] [-c]` `wc` `head [-n]` `tail [-n]` `sort [-r]` `tee [-a]` `more` `edit` `touch` `cp` `mv` `rm` `mkdir` `rmdir` `pwd` `stat` `hexdump` `ps` `kill [-sig]` `sleep` `free` `df` `mount` `umount` `format` `uptime` `date [yyyy-mm-dd] [hh:mm[:ss]]` `uname [-a]` `version` `whoami` `passwd` `theme` `help` `clear` `count` `basic` `as`
 
 Shell built-ins: `cd`, `exit`, `kill`, `jobs`, `fg`, `bg`. CTRL-Z stops the foreground command.
 

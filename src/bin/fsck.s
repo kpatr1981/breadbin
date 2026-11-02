@@ -941,7 +941,7 @@ s_leak:  .byte ": marked used, not in use", 0
 .segment "BSS"
 path:    .res 2
 probs:   .res 2
-stbuf:   .res 8
+stbuf:   .res 16
 nblocks: .res 2
 ninodes: .res 1
 niblk:   .res 1

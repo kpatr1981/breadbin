@@ -55,5 +55,5 @@ target: sta lp2
 @r:     rts
 .segment "BSS"
 path:  .res 64
-stbuf: .res 8
+stbuf: .res 16
 tlen:  .res 1

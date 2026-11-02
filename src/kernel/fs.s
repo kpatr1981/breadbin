@@ -6,7 +6,7 @@
 .include "k.inc"
 
 .importzp bp
-.import bwrite, bdirty, name_off, rd_banks
+.import bwrite, bdirty, name_off, rd_banks, epoch, ep_snap, ep_get
 
 .segment "ZEROPAGE"
 fb:     .res 2          ; caller buffer pointer for fs_read/fs_write
@@ -24,6 +24,9 @@ sb_istart_hi:  .res NDEV
 sb_ninodes:    .res NDEV
 sb_ok:         .res NDEV
 sb_nbm:        .res NDEV    ; bitmap blocks (the blocks up to the inode table)
+sb_lt1:        .res NDEV    ; last_time >> 8, as the superblock holds it
+sb_lt2:        .res NDEV
+sb_lt3:        .res NDEV
 sb_nblocks = sb_nblocks_lo
 mnt_active: .res 1
 mnt_ino:    .res 1      ; inode of /tmp on dev 0
@@ -64,7 +67,7 @@ tr_i:    .res 1
 ba_dev:  .res 1
 bm_i:    .res 1
 
-.export bm_alloc
+.export bm_alloc, stamp_m
 .export sb_ok, fs_name2, nm_dev, nm_ino, dl_off, dl_ino, f_done, dir_put
 .export bfree, mnt_active, mnt_ino, fs_count_inodes, sb_ninodes, ci_load_type
 .export inode_blk, s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi
@@ -200,6 +203,7 @@ mount_dev:
         sec
         sbc sb_bitmap_lo,x
         sta sb_nbm,x
+        jsr lt_load
         lda #1
         sta sb_ok,x
         clc
@@ -207,6 +211,48 @@ mount_dev:
 @bad:   lda #EIO
         sec
         rts
+
+; lt_load: X = dev, bp = its superblock. Remember last_time >> 8; the clock
+; moves up to the next 256 s step past last_time (sb_touch saves it only
+; every 256 s), unless it is already ahead. Keeps X.
+lt_load:
+        ldy #16
+        lda (bp),y
+        sta sb_lt1,x
+        clc
+        adc #1
+        sta tmp0
+        iny
+        lda (bp),y
+        sta sb_lt2,x
+        adc #0
+        sta tmp1
+        iny
+        lda (bp),y
+        sta sb_lt3,x
+        adc #0
+        sta tmp2
+        cpx #1              ; the RAM disk is new at every boot
+        beq @r
+        php
+        sei
+        lda epoch+1
+        cmp tmp0
+        lda epoch+2
+        sbc tmp1
+        lda epoch+3
+        sbc tmp2
+        bcs @keep
+        lda #0
+        sta epoch
+        lda tmp0
+        sta epoch+1
+        lda tmp1
+        sta epoch+2
+        lda tmp2
+        sta epoch+3
+@keep:  plp
+@r:     rts
 
 ; ---------------------------------------------------------------------
 ; inode_blk: A = dev, X = ino -> ib_lo/hi = block, Y = offset in block
@@ -258,7 +304,13 @@ iput:
         beq @c64
         clc                 ; CBM disks have no inodes to write
         rts
-@c64:   lda ci_dev
+@c64:   jsr ep_get          ; the inode changed: ctime = now
+        ldx #3
+@t:     lda ep_snap,x
+        sta ci+I_CTIME,x
+        dex
+        bpl @t
+        lda ci_dev
         ldx ci_ino
         jsr inode_blk
         lda ci_dev
@@ -277,8 +329,60 @@ iput:
         cpx #INO_SIZE
         bne @l
         ldx tmp2
-        jmp bdirty
+        jsr bdirty
+        bcc sb_touch
 @r:     rts
+
+; sb_touch: once the clock's top 3 bytes differ from ci_dev's last_time
+; (every 256 s at most), save the clock there (ep_snap holds it)
+sb_touch:
+        ldx ci_dev
+        lda ep_snap+1
+        cmp sb_lt1,x
+        bne @w
+        lda ep_snap+2
+        cmp sb_lt2,x
+        bne @w
+        lda ep_snap+3
+        cmp sb_lt3,x
+        beq @r
+@w:     lda ep_snap+1
+        sta sb_lt1,x
+        lda ep_snap+2
+        sta sb_lt2,x
+        lda ep_snap+3
+        sta sb_lt3,x
+        txa
+        ldx #<376           ; the superblock: block 0 on the RAM disk
+        ldy #>376
+        cmp #1
+        bne @b
+        ldx #0
+        ldy #0
+@b:     jsr bread
+        bcs @r
+        stx tmp2
+        ldx #3
+        ldy #15+3
+@c:     lda ep_snap,x
+        sta (bp),y
+        dey
+        dex
+        bpl @c
+        ldx tmp2
+        jmp bdirty
+@r:     clc
+        rts
+
+; stamp_m: the contents changed: mtime = now (the caller iputs)
+stamp_m:
+        jsr ep_get
+        ldx #3
+@l:     lda ep_snap,x
+        sta ci+I_MTIME,x
+        dex
+        bpl @l
+        rts
 
 ci_load_type:
         lda ci+I_TYPE
@@ -322,6 +426,7 @@ ialloc:
         sta ci+I_TYPE
         lda #1
         sta ci+I_NLINK
+        jsr stamp_m
         jsr iput
         bcs @r
         lda ci_ino
@@ -625,6 +730,7 @@ read_ind:
 
 ; itrunc: free all blocks of ci, size = 0 (caller iputs)
 itrunc:
+        jsr stamp_m
         ldx #0
 @d:     stx tr_i
         lda ci+I_DIRECT,x
@@ -873,6 +979,7 @@ fs_write:
         jmp @loop
 @fbig:  lda #EFBIG
 @err:   pha
+        jsr stamp_m
         jsr iput
         pla
         ldx f_done
@@ -883,7 +990,8 @@ fs_write:
         rts
 @part:  clc
         rts
-@end:   jmp iput
+@end:   jsr stamp_m
+        jmp iput
 
 ; ---------------------------------------------------------------------
 ; directories (ci = directory inode, fs_name = 15-byte padded name)

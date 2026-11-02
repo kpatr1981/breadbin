@@ -7,7 +7,7 @@
 ; returns (plp/rts) into *that* process's call to sched.
 .include "k.inc"
 .import con_raw
-.export sys_fg, tod_soft, sigint_fg, sigtstp_fg, tod_tick, sched_found
+.export sys_fg, sigint_fg, sigtstp_fg, clk_tick, sched_found
 
 .segment "BSS"
 p_state:  .res MAXPROC
@@ -35,14 +35,12 @@ next_pid: .res 1
 new_slot: .res 1
 wk_ch:    .res 1
 fg_sig:   .res 1
-tod_soft: .res 1        ; 0 unchecked, 1 TOD ticks, $80 the IRQ ticks it
-tod_div:  .res 1
-tod_h:    .res 1
-tod_m:    .res 1
-tod_s:    .res 1
-tod_t:    .res 1
+epoch:    .res 4        ; the clock: seconds since 1970, local time
+ep_div:   .res 1        ; jiffies into the current second
+ep_snap:  .res 4        ; ep_get's copy of it
 
 .export p_pslot, new_slot, proc_entry, p_uid, sys_getuid, sys_setuid, p_pgrp
+.export epoch, ep_snap, ep_get, sys_clock
 
 .segment "RODATA"
 s_init: .byte "init exited", 0
@@ -290,7 +288,7 @@ irq:
         inc ticks+1
         bne @t
         inc ticks+2
-@t:     jsr tod_tick
+@t:     jsr clk_tick
         jsr con_cursor_tick
         ; wake sleepers whose deadline has passed
         ldx #MAXPROC-1
@@ -386,99 +384,25 @@ irq:
         ora #$80
         jmp proc_exit
 
-; tod_tick: CIA 1's TOD clock counts the mains frequency on its TOD pin.
-; On a C64 fed from a DC supply that pin is dead and TOD stands still, so
-; half a second after boot (kmain started it at 00:00:00.0) the IRQ checks:
-; if it has not moved, every 6th jiffy adds a tenth of a second instead.
-; The registers stay the clock, so `date` and programs read and set it as
-; on any C64.
-tod_tick:
-        lda tod_soft
-        bmi @soft
-        bne @r              ; checked: TOD ticks by itself
-        lda ticks
-        cmp #30
+; clk_tick: once per jiffy, from the IRQ and from the serial bus waits
+; (ie_tick), with interrupts off: 60 jiffies make a second of the clock.
+; It runs from the timer, so it keeps time on C64s whose TOD clock input
+; is dead (DC power supplies) too.
+clk_tick:
+        inc ep_div
+        lda ep_div
+        cmp #60
+        bcc @r
+        lda #0
+        sta ep_div
+        inc epoch
         bne @r
-        lda $dc09           ; seconds, then tenths (no latch)
-        ora $dc08
-        bne @hw
-        lda #6
-        sta tod_div
-        lda #$80
-        .byte $2c
-@hw:    lda #1
-        sta tod_soft
+        inc epoch+1
+        bne @r
+        inc epoch+2
+        bne @r
+        inc epoch+3
 @r:     rts
-@soft:  dec tod_div
-        bne @r
-        lda #6
-        sta tod_div
-        lda $dc0b           ; reading hours latches, tenths unlatches
-        sta tod_h
-        lda $dc0a
-        sta tod_m
-        lda $dc09
-        sta tod_s
-        lda $dc08
-        sed
-        clc
-        adc #1
-        cmp #$10
-        bcc @set            ; A = tenths
-        lda tod_s
-        adc #0              ; carry is set: +1
-        sta tod_s
-        cmp #$60
-        bcc @z
-        lda #0
-        sta tod_s
-        lda tod_m
-        adc #0
-        sta tod_m
-        cmp #$60
-        bcc @z
-        lda #0
-        sta tod_m
-        lda tod_h           ; 12-hour BCD, bit 7 = PM
-        and #$1f
-        adc #0
-        cmp #$13
-        bcc @h
-        lda #$01
-@h:     sta tod_t
-        lda tod_h
-        and #$80
-        ldx tod_t
-        cpx #$12            ; 11 -> 12 flips AM/PM
-        bne @k
-        eor #$80
-@k:     ora tod_t
-        sta tod_h
-@z:     lda #0
-@set:   cld
-        pha
-        lda tod_h
-        jsr tod_wh
-        pla
-        ldx tod_m
-        stx $dc0a
-        ldx tod_s
-        stx $dc09
-        sta $dc08           ; writing tenths starts it
-        rts
-
-; tod_wh: write A to the TOD hours (this stops the clock). The 6526 flips
-; AM/PM when 12 is written, so 12 goes in with the flag inverted.
-tod_wh:
-        tax
-        and #$7f
-        eor #$12
-        bne @w
-        txa
-        eor #$80
-        tax
-@w:     stx $dc0b
-        rts
 
 ; sigint_fg / sigtstp_fg / sigkill_fg: interrupt, stop or kill the
 ; foreground processes
@@ -855,6 +779,49 @@ sys_setuid:
         sec
         rts
 @ok:    clc
+        rts
+
+; ep_get: ep_snap = the clock, read with interrupts off. Keeps Y.
+ep_get: php
+        sei
+        ldx #3
+@l:     lda epoch,x
+        sta ep_snap,x
+        dex
+        bpl @l
+        plp
+        rts
+
+; clock(A = 0: r0 = buf[4] <- the time; A = 1: the time <- buf[4], only
+; for root). The time is seconds since 1970, local time.
+sys_clock:
+        cmp #1
+        beq @set
+        jsr ep_get
+        ldy #3
+@g:     lda ep_snap,y
+        sta (r0),y
+        dey
+        bpl @g
+        clc
+        rts
+@set:   ldx cur
+        lda p_uid,x
+        bne @perm
+        ldy #3
+        php
+        sei
+@s:     lda (r0),y
+        sta epoch,y
+        dey
+        bpl @s
+        lda #0
+        sta ep_div
+        plp
+        clc
+        rts
+@perm:  lda #EPERM
+        sec
         rts
 
 ; time() -> A/X/Y = jiffies lo/mid/hi

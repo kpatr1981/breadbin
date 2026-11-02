@@ -15,7 +15,7 @@
 ; acknowledge, $02 read timeout).  X and Y are preserved.  ie_st keeps
 ; every error since the last LISTEN/TALK, and iecunlisten reports them.
 .include "k.inc"
-.import tod_tick
+.import clk_tick
 
 PRA      = $dd00        ; out: bit 3 ATN, 4 CLK, 5 DATA (1 = pull low)
                         ; in:  bit 6 CLK, 7 DATA (1 = released)
@@ -299,7 +299,7 @@ ie_tick:
         inc ticks+1
         bne @t
         inc ticks+2
-@t:     jsr tod_tick
+@t:     jsr clk_tick
         pla
         tax
 @r:     rts

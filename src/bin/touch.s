@@ -1,5 +1,6 @@
-; touch: create each file that doesn't exist yet. Inodes have no timestamps,
-; so a file that exists stays as it is.
+; touch name...: set each file's time to now (SYS_UTIME), creating the
+; files that don't exist yet. On a normal C64 disk, which has no times,
+; an existing file stays as it is.
 .include "../../include/breadbin.inc"
 .import argn, perr, eprint
 idx  = $23
@@ -25,9 +26,8 @@ path = $25
         stx path+1
         sta r0
         stx r0+1
-        lda #O_RDONLY       ; directories and CBM DOS files exist too
-        jsr SYS_OPEN
-        bcc @c
+        jsr SYS_UTIME
+        bcc @n
         cmp #ENOENT
         bne @e
         lda path
@@ -37,7 +37,7 @@ path = $25
         lda #(O_WRONLY | O_CREAT)
         jsr SYS_OPEN
         bcs @e
-@c:     jsr SYS_CLOSE
+        jsr SYS_CLOSE
         bcc @n
 @e:     ldx path
         ldy path+1

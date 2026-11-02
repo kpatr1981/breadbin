@@ -135,6 +135,7 @@ Every system call is a `jsr` into the jump table at `$CF00`. Its addresses are s
 | `SYS_YIELD` | | | gives up the rest of your time slice |
 | `SYS_SLEEP` | A/X = jiffies (1/60 s) | | |
 | `SYS_TIME` | | A/X/Y = jiffies since boot (24 bits) | ticks from a crystal timer, so it works on any C64 |
+| `SYS_CLOCK` | A = 0, r0 = 4-byte buffer | the buffer holds the time | seconds since 1970, local time (no time zones), little-endian. A = 1 sets the clock from the buffer: root only (`EPERM`) |
 | `SYS_OPEN` | r0 = path, A = flags | A = fd | `O_RDONLY`, `O_WRONLY`, `O_RDWR`, plus `O_CREAT`, `O_TRUNC`, `O_APPEND` |
 | `SYS_CLOSE` | A = fd | | |
 | `SYS_READ` | A = fd, r0 = buffer, r1 = max length | r1 = count | r1 = 0 means end of file. From the console it returns one line |
@@ -142,7 +143,8 @@ Every system call is a `jsr` into the jump table at `$CF00`. Its addresses are s
 | `SYS_PIPE` | | A = read fd, X = write fd | 256-byte kernel buffer; readers and writers block |
 | `SYS_ISATTY` | A = fd | carry clear if the console | |
 | `SYS_CONMODE` | A = 0 cooked, 1 raw | | raw: one key per read, no echo (see below) |
-| `SYS_STAT` | r0 = path, r1 = 8-byte buffer | | type, nlink, size (3 bytes), inode, device, major. Types `T_FILE`, `T_DIR`, `T_CHR` |
+| `SYS_STAT` | r0 = path, r1 = 16-byte buffer | | type, nlink, size (3 bytes), inode, device, major, mtime (4), ctime (4). Types `T_FILE`, `T_DIR`, `T_CHR`. Times as `SYS_CLOCK`'s; 0 = unknown (a normal C64 disk). 0.4 and earlier filled only 8 bytes |
+| `SYS_UTIME` | r0 = path | | sets its mtime and ctime to now (`touch`). Does nothing on a normal C64 disk |
 | `SYS_MKDIR` / `SYS_RMDIR` / `SYS_UNLINK` | r0 = path | | |
 | `SYS_RENAME` | r0 = old, r1 = new | | same device only (`EXDEV`) |
 | `SYS_CHDIR` | r0 = path | | |
@@ -306,7 +308,7 @@ Things that need more thought on a C64:
 - **Large inputs.** `sort` can't hold a 30 KB file in memory. Write runs to `/tmp` (fast with an REU or GeoRAM) and merge them.
 - **Options.** Parse `-x` flags from `argv` by hand; there is no `getopt`. Look at `src/bin/head.s` or `grep.s`.
 - **Regular expressions.** `grep` does fixed strings. A small backtracking matcher (`^ $ . * [...]`) fits in about 1 KB.
-- **Time.** `SYS_TIME` gives jiffies since boot. The time of day is in the CIA 1 TOD registers (`$DC08–$DC0B`, BCD, 12-hour with a PM bit). Read hours first and tenths last, and write 12 o'clock with the PM bit inverted: the 6526 flips it. On a C64 without a working TOD input (DC power supplies), the kernel keeps those registers ticking itself.
+- **Time.** `SYS_TIME` gives jiffies since boot; `SYS_CLOCK` gives the date and time as seconds since 1970, in local time. The kernel counts that clock from the timer interrupt, so it keeps time on DC-powered C64s too, and it starts from the boot disk's `last_time` (see [the filesystem guide](filesystem.md)) until `date` sets it. To turn it into a calendar date, link `src/lib/date.s`: `ep2cal` and `cal2ep` convert between `dt_ep` and `dt_year`, `dt_mon`, `dt_day`, `dt_h`, `dt_m`, `dt_s`, and `print_date` prints them (`ls`, `stat` and `date` use it). The kernel no longer sets or drives the CIA 1 TOD registers.
 
 ## Limits
 
