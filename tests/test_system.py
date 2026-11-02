@@ -6,7 +6,7 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
-from vicetest import Vice  # noqa: E402
+from vicetest import Vice, scratch_file  # noqa: E402
 
 IMAGE = os.path.join(ROOT, "build", "breadbin.d64")
 
@@ -14,7 +14,7 @@ IMAGE = os.path.join(ROOT, "build", "breadbin.d64")
 def scratch(name):
     """A file in build/ of this run's own, so suites can run side by side."""
     base, ext = os.path.splitext(name)
-    return os.path.join(ROOT, "build", "%s-%d%s" % (base, os.getpid(), ext))
+    return scratch_file(os.path.join(ROOT, "build", "%s-%d%s" % (base, os.getpid(), ext)))
 
 
 class Boot(unittest.TestCase):

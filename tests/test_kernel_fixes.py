@@ -7,7 +7,7 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
-from vicetest import Vice  # noqa: E402
+from vicetest import Vice, scratch_file  # noqa: E402
 
 IMAGE = os.path.join(ROOT, "build", "breadbin-test.d64")
 
@@ -16,7 +16,7 @@ class KernelFixes(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.img = os.path.join(ROOT, "build", "fixes-%d.d64" % os.getpid())
+        cls.img = scratch_file(os.path.join(ROOT, "build", "fixes-%d.d64" % os.getpid()))
         with open(IMAGE, "rb") as f, open(cls.img, "wb") as g:
             g.write(f.read())
         cls.v = Vice(cls.img)

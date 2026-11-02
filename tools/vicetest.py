@@ -6,6 +6,7 @@
         v.type("ls\\n")
         print(v.screen())
 """
+import atexit
 import os
 import re
 import socket
@@ -14,6 +15,14 @@ import tempfile
 import time
 
 X64 = os.environ.get("X64SC", "x64sc")
+
+
+def scratch_file(path):
+    """Delete this run's scratch file (a disk image copy) when the test
+    process exits. BB_KEEP=1 keeps them, to look at after a failure."""
+    if not os.environ.get("BB_KEEP"):
+        atexit.register(lambda: os.path.exists(path) and os.remove(path))
+    return path
 
 
 def screen_to_text(codes):
@@ -67,6 +76,8 @@ class Vice:
         args += ["-autostart", image]
         self.log = tempfile.NamedTemporaryFile(prefix="vice", suffix=".log", delete=False)
         self.proc = subprocess.Popen(args, stdout=self.log, stderr=subprocess.STDOUT)
+        # a setUpClass that fails skips tearDownClass: don't leave VICE running
+        atexit.register(self._reap)
         self.sock = None
         deadline = time.time() + 20
         while time.time() < deadline:
@@ -76,6 +87,7 @@ class Vice:
             except OSError:
                 time.sleep(0.3)
         if not self.sock:
+            self._reap()
             raise RuntimeError("could not connect to VICE monitor")
         self._cmd("x")
 
@@ -96,6 +108,11 @@ class Vice:
             self.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             self.proc.kill()
+
+    def _reap(self):
+        if self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait()
 
     def _cmd(self, c, wait=0.15):
         self.sock.sendall((c + "\n").encode())
