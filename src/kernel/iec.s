@@ -32,6 +32,7 @@ ie_cnt:  .res 1
 ie_in:   .res 1         ; byte being received
 ie_sa:   .res 1
 ie_st:   .res 1
+ie_x:    .res 1
 
 .segment "CODE"
 iec_init:
@@ -63,9 +64,15 @@ iectalk:
         jsr data_lo
         jsr atn_hi
         jsr clk_hi
-@w:     jsr ie_tick
-        jsr deb
-        bmi @w              ; until the drive pulls CLK
+        stx ie_x            ; until the drive pulls CLK. A 1581 (2 MHz) may
+@w:     ldx #0              ; pull and release it again within ~30 cycles
+@p:     bit PRA             ; (V = CLK in: 1 = released): poll every 11
+        bvc @t              ; cycles, and count jiffies every 256 polls
+        dex
+        bne @p
+        jsr ie_tick
+        jmp @w
+@t:     ldx ie_x
         cli
         clc
 @r:     rts
