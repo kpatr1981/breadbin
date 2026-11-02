@@ -5,12 +5,15 @@ the free MEGA65 Open ROMs, from the webdemo tool (WEBDEMO_DIR, whose build_core.
 That core has no drive ROM, so Breadbin boots without a drive: the kernel is the autostarted
 .prg, and the boot disk comes preloaded in the REU. breadbin.reu is the .d64 padded to 256 KB
 (c64fs block b sits at offset b*256 in both), and the VICE core loads it because it is next to
-the .prg once EmulatorJS unpacks breadbin-web.zip.
+the .prg once EmulatorJS unpacks breadbin-web-HASH.zip. HASH comes from the zip's contents:
+EmulatorJS caches a game by its URL for days, so a fixed name would keep showing returning
+visitors the previous release.
 
     python3 tools/webdemo.py WEBDEMO_DIR build/breadbin.prg build/breadbin.d64 OUT_DIR
 
 Writes OUT_DIR (push that folder with butler) and OUT_DIR.zip.
 """
+import hashlib
 import json
 import shutil
 import sys
@@ -20,7 +23,7 @@ from pathlib import Path
 REU_SIZE = 256 * 1024
 
 
-def page():
+def page(game):
     pad = {str(i): {"value": "", "value2": ""} for i in range(30)}   # every key goes to the C64
     opts = {
         "keyboardInput": "enabled",             # EmulatorJS: keys go to the C64, not the pad
@@ -65,7 +68,7 @@ def page():
 <script>
   EJS_player = "#game";
   EJS_core = "vice_x64sc";
-  EJS_gameUrl = "breadbin-web.zip";
+  EJS_gameUrl = "{game}";
   EJS_pathtodata = "data/";
   EJS_paths = {{"emulator.min.js": "data/src/emulator.js", "emulator.min.css": "data/emulator.css"}};
   EJS_color = "#7c70da";
@@ -94,9 +97,11 @@ def main(argv):
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(kit / "data", out / "data")
-    with zipfile.ZipFile(out / "breadbin-web.zip", "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("breadbin.prg", prg.read_bytes())
-        zf.writestr("breadbin.reu", image + bytes(REU_SIZE - len(image)))
+    kernel, reu = prg.read_bytes(), image + bytes(REU_SIZE - len(image))
+    game = f"breadbin-web-{hashlib.sha1(kernel + reu).hexdigest()[:8]}.zip"
+    with zipfile.ZipFile(out / game, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("breadbin.prg", kernel)
+        zf.writestr("breadbin.reu", reu)
     lic = out / "LICENSES"
     lic.mkdir()
     for name, f in make_webdemo.LICENCES.items():
@@ -106,7 +111,7 @@ def main(argv):
     for f in ("build_core.sh", "strip_roms.py", "romscan.py", "make_webdemo.py"):
         shutil.copy(tool / f, lic / "build" / f)
     shutil.copy(Path(__file__), lic / "build" / "breadbin_webdemo.py")
-    (out / "index.html").write_text(page())
+    (out / "index.html").write_text(page(game))
     z = out.with_suffix(".zip")
     z.unlink(missing_ok=True)
     with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
