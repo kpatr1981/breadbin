@@ -8,14 +8,14 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
-from vicetest import Vice  # noqa: E402
+from vicetest import Vice, scratch_file  # noqa: E402
 import mkimage  # noqa: E402
 
 IMAGE = os.path.join(ROOT, "build", "breadbin-test.d64")
 
 
 def copy_image(name):
-    img = os.path.join(ROOT, "build", "%s-%d.d64" % (name, os.getpid()))
+    img = scratch_file(os.path.join(ROOT, "build", "%s-%d.d64" % (name, os.getpid())))
     with open(IMAGE, "rb") as f, open(img, "wb") as g:
         g.write(f.read())
     return img
