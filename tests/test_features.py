@@ -476,5 +476,108 @@ class TimeAcrossReboot(unittest.TestCase):
         self.assertLessEqual(out, "2040-06-07 08:20:00")
 
 
+class Edit(unittest.TestCase):
+    """edit: where the text ends, what a key redraws, files too big, ^K."""
+
+    LINE = b"0123456789" * 5 + b"\n"                   # 51 bytes
+    FILES = {
+        "ends": LINE * 5 + b"zzz",                      # 258 bytes; 255 after 3 DELs
+        "lines": b"one\ntwo\nthree\nfour\n",
+        "kill": b"one\ntwo\nthree",
+        "big": (b"x" * 99 + b"\n") * 84 + b"y" * 47 + b"\n",   # 8,448: 8 KB and a page
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        img = copy_image("edit")
+        with open(img, "rb") as f:
+            image = mkimage.Image(f.read())
+        fs = mkimage.FS(image)
+        home = fs.lookup("/home")
+        for name, data in cls.FILES.items():
+            fs.create(home, name.encode(), data)
+        with open(img, "wb") as f:
+            f.write(image.data)
+        cls.v = Vice(img)
+        cls.v.wait_shell()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.v.close()
+
+    def until(self, pred, timeout=30):
+        end = time.time() + timeout
+        while time.time() < end:
+            s = self.v.screen_lines()
+            if pred(s):
+                return s
+            time.sleep(0.1)
+        self.fail("timed out:\n" + "\n".join(self.v.screen_lines()))
+
+    def setUp(self):
+        if "edit:" in self.v.screen_lines()[24]:      # a failed test left edit open
+            self.quit()
+
+    def keys(self, *codes):
+        self.v._cmd("keybuf " + "".join("\\x%02x" % c for c in codes))
+        self.v._cmd("x")
+
+    def open(self, name):
+        self.v.type("clear\nedit /home/%s\n" % name)
+        return self.until(lambda s: ("/home/" + name) in s[24])
+
+    def quit(self):
+        self.keys(0x18)                                 # ^X
+        s = self.until(lambda s: Vice.PROMPT.match(s[0]) or "unsaved" in s[24])
+        if not Vice.PROMPT.match(s[0]):
+            self.keys(0x18)                             # again, to drop the changes
+            self.until(lambda s: Vice.PROMPT.match(s[0]))   # edit clears the screen
+
+    def size(self, name):
+        return int(self.v.run("ls -l /home/" + name).split()[1])
+
+    def test_nothing_drawn_past_the_end(self):
+        # 255 bytes end past a page boundary unless the text starts on one, and
+        # the deleted "zzz" stays in memory just past the end.
+        self.open("ends")
+        self.keys(0x11, 0x11, 0x11, 0x11, 0x11)         # down to "zzz"
+        self.keys(0x1D, 0x1D, 0x1D, 0x14, 0x14, 0x14)   # to its end, DEL x3
+        s = self.until(lambda s: "*" in s[24] and s[4] and "z" not in s[5])
+        self.assertEqual([l for l in s[:24] if l], [self.LINE[:39].decode()] * 5)
+        self.quit()
+
+    def test_cursor_keys_redraw_nothing(self):
+        self.open("lines")
+        self.v._cmd("> 0590 2a")                        # a '*' on row 10, col 0
+        self.v._cmd("> 07e6 2a")                        # and at the status line's end
+        self.v._cmd("x")
+        self.keys(0x1D, 0x11)                           # right, down
+        time.sleep(1)
+        s = self.v.screen_lines()
+        self.assertEqual(s[10], "*")
+        self.assertTrue(s[24].endswith("*"), s[24])
+        self.keys(ord("A"))                             # typing redraws the text,
+        self.until(lambda s: s[10] == "" and "*" in s[24] and not s[24].endswith("*"))
+        self.quit()
+
+    def test_a_file_over_8_kb_is_refused(self):
+        self.v.type("clear\nedit /home/big; echo $?\n")
+        s = self.until(lambda s: s[2] == "1" or "edit:" in s[24])   # (or it opened)
+        self.assertEqual(s[1:3], ["edit: file too big", "1"])
+        self.assertEqual(self.size("big"), 8448)
+
+    def test_line_kill(self):
+        self.open("kill")
+        self.keys(0x11, 0x0B)                           # down, ^K: "two"
+        self.until(lambda s: s[1] == "three")
+        self.keys(0x0B)                                 # the last line, no newline
+        self.until(lambda s: s[1] == "")
+        self.keys(0x0B)                                 # an empty last line
+        self.keys(0x0F)                                 # ^O
+        self.until(lambda s: "saved" in s[24])
+        self.quit()
+        self.assertEqual(self.v.run("wc /home/kill").split()[:3], ["1", "1", "4"])
+
+
 if __name__ == "__main__":
     unittest.main()
