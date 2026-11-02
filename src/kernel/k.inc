@@ -123,6 +123,7 @@ ST     = $90
 ; blk.s
 .global blk_init, bread, bdirty, bflush_all, buf_ptr, reu_banks, ram_type, dev_present
 .global iec_open, iec_close, ts_block, iec_command, cur_dev_set, dev_drive, dev_type
+.global drive_open, dev_geo, dir_first, cb_t, cb_s
 .global bget_buf, binval
 .global ieclisten, iectalk, iecout, iecin, iecunlisten, iecuntalk, iec_init
 .global ie_st

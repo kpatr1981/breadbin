@@ -104,6 +104,20 @@ The C64 has no battery clock. The kernel's clock counts seconds from the timer i
 
 A directory is a file of 16-byte entries: 1 byte for the inode number (0 = unused slot) and 15 bytes for the name (up to 14 characters, NUL-padded). Every directory starts with `.` (itself) and `..` (its parent). Names are ASCII and case-sensitive; `/`, `.` and `..` are special.
 
+### On a 1581 (.d81)
+
+A 1581 disk has 3200 sectors: 80 tracks of 40. c64fs numbers them as blocks 0 to 3199 (track 1 sector 0 is block 0, track 40 sector 0 is block 1560), and keeps the superblock at block 376 as on a 1541, which is 10/16 there:
+
+| Blocks | Contents |
+|---|---|
+| 376 | c64fs superblock (3200 blocks) |
+| 377 – 378 | block bitmap (two blocks: 2048 bits each) |
+| 379 – 410 | inode table (32 blocks, 128 inodes) |
+| 1560 – 1599 (track 40) | the CBM DOS header, BAM and directory, left for the drive's DOS |
+| everything else | file and directory data |
+
+The kernel tells the drives apart when it opens one: a 1581 reads track 40 sector 0 and finds its header there (format `D`), while a 1541 refuses the track. A 1581 gets the standard protocol, since the fast routine is 1541 code, and drive 8's blocks are not copied into the REU (that copy is sized for 683 blocks). `make` builds `build/breadbin.d81` next to the `.d64`; `make run-d81` boots it in VICE.
+
 ### How the kernel reaches the disk
 
 The kernel reads and writes whole sectors with the 1541's sector commands: `U1` reads a block (on drives 9–11, and on drive 8 when the fast read below isn't available), `B-P` with `U2` writes one. Those go over the serial bus through Breadbin's own IEC driver (`src/kernel/iec.s`), not the KERNAL ROM, on the command channel (15) and a data channel with a drive buffer (`#`). The driver follows the stock KERNAL's protocol and timing, so it works the same under the Commodore ROMs and the MEGA65 Open ROMs. A cache of 6 blocks sits in front of the drive. It is write-back: a changed block reaches the disk when a file written to is closed, when it has been changed for two seconds, on `sync`, on `umount`, or when its buffer is needed for another block. Wait for the drive to stop (or run `sync`) before switching off.

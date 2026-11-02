@@ -466,9 +466,15 @@ cbm_open:
         bcs @r
         lda #FT_DIR
         sta f_type,x
-        lda #18
+        txa
+        pha
+        lda nm_dev
+        jsr dir_first
+        pla
+        tax
+        lda cb_t
         sta f_pos0,x
-        lda #1
+        lda cb_s
         sta f_pos1,x
         lda #0
         sta f_pos2,x
@@ -1574,11 +1580,14 @@ sys_fsinfo:
         txa
         dey
         sta (r1),y
+        ldx nm_dev          ; total: 664 on a 1541, 3160 on a 1581
+        ldy dev_geo,x
+        lda cbm_tot_lo,y
+        ldx cbm_tot_hi,y
         ldy #2
-        lda #<664
         sta (r1),y
         iny
-        lda #>664
+        txa
         sta (r1),y
         iny
         lda #0
@@ -1625,3 +1634,7 @@ sys_fsinfo:
         sta (r1),y
         clc
 @r:     rts
+
+.segment "RODATA"
+cbm_tot_lo: .byte <664, <3160     ; blocks of a CBM disk: 1541, 1581
+cbm_tot_hi: .byte >664, >3160

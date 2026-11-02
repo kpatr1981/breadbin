@@ -12,7 +12,7 @@ It is a real kernel, not a shell that prints canned output:
 - **A Unix filesystem on the 1541.** c64fs has inodes, real directories (`mkdir`, `cd`, `..`), files up to 35 KB, modification times (`ls -l`, `stat`, `touch`), and `/dev/console` and `/dev/null` device nodes.
 - **Signals and job control.** RUN/STOP sends `SIGINT` to the foreground job and CTRL-Z stops it; `fg` and `bg` bring it back, `jobs` and `ps` show it as stopped. `kill` sends any signal.
 - **REU and GeoRAM support.** If a RAM Expansion Unit (or, without one, a GeoRAM) is present, it is detected at boot, formatted, and mounted at `/tmp` as a fast RAM disk. Neither is required.
-- **More drives.** `mount 9 /mnt` attaches drive 9, 10 or 11. A Breadbin disk shows up with its directories. A normal C64 disk shows up as one flat directory that you can read, write (`cp`), `rm` and `mv`; the writes go through the drive's own DOS, so other C64 software can read the results.
+- **More drives.** `mount 9 /mnt` attaches drive 9, 10 or 11, a 1541 or a 1581. A Breadbin disk shows up with its directories. A normal C64 disk shows up as one flat directory that you can read, write (`cp`), `rm` and `mv`; the writes go through the drive's own DOS, so other C64 software can read the results.
 - **Users and screen.** There's a `login` with passwords (`passwd`, `whoami`), a full-screen editor (`edit`), colour `theme`s, shell wildcards (`*.bas`) and `jobs`.
 - **Stock hardware.** It runs on a stock C64 with a 1541, and the same disk boots with or without an REU. A C128 in C64 mode works too, with a 1541 or 1571. The clock (`date`) runs from the timer interrupt, so it keeps time even on C64s powered from a DC supply, whose TOD clock input is dead. The C64 has no battery clock: set it with `date 2026-11-02 14:30`. Until then it starts from the newest time saved on the boot disk, so it never goes backwards.
 - **BASIC and an assembler.** Both run *on* the C64: `basic` is an integer BASIC, and `as` is a 6502 assembler that produces new Breadbin commands.
@@ -93,8 +93,9 @@ Things to know:
 
 - **No cartridges.** The kernel runs at `$7F00–$CFFF`, over the area where a cartridge maps its ROM, so Action Replay, Final Cartridge, EasyFlash and the like must be removed or switched off. An REU or a GeoRAM is fine: they only use the I/O area.
 - **Disk access is slowish.** Breadbin has its own serial bus driver, and it loads a small routine into the 1541 that sends sectors about twice as fast as the standard protocol (the disk's rotation is the limit after that). Loading a command from a floppy still takes a second or two, and the system pauses while the drive works. A drive that can't run 1541 code (SD2IEC) gets the standard protocol. JiffyDOS doesn't help, but it doesn't get in the way either. With an REU of 256 KB or more, every block read from drive 8 is kept in the REU, so the second load of a command is instant.
-- **Handled:** PAL and NTSC, C64s on DC power supplies (whose TOD clock never ticks: the kernel keeps time itself), and a C128 in C64 mode with a 1541 or 1571.
-- **Not supported:** the 1581 and 40-track disks.
+- **Handled:** PAL and NTSC, C64s on DC power supplies (the clock runs from the timer, not the TOD input), and a C128 in C64 mode with a 1541 or 1571.
+- **1581 drives** work too: `build/breadbin.d81` boots from a 1581 (or an Ultimate with a .d81 mounted) and has 3200 blocks, and a 1581 in drive 9–11 takes Breadbin disks, normal 1581 disks and `format`. The fast disk routine is 1541 code, so a 1581 uses the standard protocol. Tested in VICE only so far.
+- **Not supported:** 40-track 1541 disks.
 
 If you try it on real hardware, a report helps either way, and for a crash a photo of the screen (especially a `kernel panic:` line).
 

@@ -11,9 +11,12 @@ what kernels up to 0.4 read. Format 2 (magic C64F2) has 64-byte inodes with
 mtime and ctime and a last_time in the superblock; see
 docs/design-timestamps-d81.md. Times are seconds since 1970 in local time.
 
+A .d81 (1581, 3200 blocks) works the same way, with the CBM DOS side on
+track 40 instead of 18. The superblock is at block 376 on both.
+
 Usage:
-  mkimage.py build OUT.d64 --boot BOOT.prg --root DIR [--dev NAME:MAJOR ...]
-                           [--format 1|2]
+  mkimage.py build OUT.d64|OUT.d81 --boot BOOT.prg --root DIR
+                           [--dev NAME:MAJOR ...] [--format 1|2]
   mkimage.py upgrade IN.d64 OUT.d64 [--boot BOOT.prg]
   mkimage.py ls IMG PATH
   mkimage.py cat IMG PATH
@@ -62,6 +65,43 @@ def block_to_ts(b):
 
 
 DIR_TRACK = 18
+
+
+class Geometry:
+    """A disk type: its blocks, its track/sector numbering and where the
+    CBM DOS keeps its directory."""
+
+    def __init__(self, name, spt, tracks, dir_track, dir_first, header):
+        self.name = name
+        self.start = {}
+        b = 0
+        for t in range(1, tracks + 1):
+            self.start[t] = b
+            b += spt(t)
+        self.tracks = tracks
+        self.nblocks = b
+        self.size = b * 256
+        self.dir_track = dir_track
+        self.dir_first = dir_first      # (track, sector) of the first directory block
+        self.header = header            # (track, sector) of the BAM / header block
+
+    def ts_to_block(self, t, s):
+        return self.start[t] + s
+
+    def block_to_ts(self, b):
+        for t in range(self.tracks, 0, -1):
+            if b >= self.start[t]:
+                return t, b - self.start[t]
+        raise ValueError(b)
+
+    def dir_blocks(self):
+        t = self.dir_track
+        return set(range(self.start[t], self.start[t] + (self.start.get(t + 1, self.nblocks) - self.start[t])))
+
+
+D64 = Geometry("d64", sectors_per_track, 35, 18, (18, 1), (18, 0))
+D81 = Geometry("d81", lambda t: 40, 80, 40, (40, 3), (40, 0))
+GEOMETRIES = {g.size: g for g in (D64, D81)}
 
 # ---- c64fs layout -------------------------------------------------------
 
@@ -125,9 +165,14 @@ def get32(b, off):
 
 
 class Image:
-    def __init__(self, data=None):
-        self.data = bytearray(data) if data is not None else bytearray(D64_SIZE)
-        assert len(self.data) == D64_SIZE
+    def __init__(self, data=None, geo=None):
+        if data is not None:
+            geo = geo or GEOMETRIES.get(len(data))
+            if geo is None:
+                raise ValueError("not a .d64 or .d81 image")
+        self.geo = geo or D64
+        self.data = bytearray(data) if data is not None else bytearray(self.geo.size)
+        assert len(self.data) == self.geo.size
 
     # raw blocks
     def block(self, b):
@@ -139,21 +184,58 @@ class Image:
 
     # ---- CBM side ----
     def write_cbm(self, boot_name, boot_data, disk_name=b"BREADBIN", disk_id=b"BB"):
-        used = set(range(TRACK_START[18], TRACK_START[19]))
+        g = self.geo
+        used = g.dir_blocks()
         # boot file: sequential sectors from track 1
         chunks = [boot_data[i:i + 254] for i in range(0, len(boot_data), 254)] or [b""]
         blocks = list(range(len(chunks)))
-        if blocks[-1] >= TRACK_START[18]:
+        if blocks[-1] >= min(SUPER_BLOCK, min(used)):
             raise SystemExit("boot file too large")
         for i, (blk, chunk) in enumerate(zip(blocks, chunks)):
             buf = bytearray(256)
             if i + 1 < len(blocks):
-                buf[0], buf[1] = block_to_ts(blocks[i + 1])
+                buf[0], buf[1] = g.block_to_ts(blocks[i + 1])
             else:
                 buf[0], buf[1] = 0, len(chunk) + 1
             buf[2:2 + len(chunk)] = chunk
             self.put_block(blk, buf)
             used.add(blk)
+        if g is D81:
+            self._cbm_header_d81(disk_name, disk_id)
+        else:
+            self._cbm_bam_d64(disk_name, disk_id)
+        d = bytearray(256)
+        d[0], d[1] = 0, 0xff
+        d[2] = 0x82  # PRG, closed
+        d[3], d[4] = g.block_to_ts(blocks[0])
+        d[5:21] = boot_name.upper()[:16].ljust(16, b"\xa0")
+        d[30] = len(blocks) & 0xff
+        d[31] = len(blocks) >> 8
+        self.put_block(g.ts_to_block(*g.dir_first), d)
+        return used
+
+    def _cbm_header_d81(self, disk_name, disk_id):
+        g = self.geo
+        h = bytearray(256)                      # 40/0: header
+        h[0], h[1] = g.dir_first
+        h[2] = ord("D")
+        h[4:20] = disk_name.upper()[:16].ljust(16, b"\xa0")
+        h[20:22] = b"\xa0\xa0"
+        h[22:24] = disk_id[:2]
+        h[24] = 0xa0
+        h[25:27] = b"3D"
+        h[27:29] = b"\xa0\xa0"
+        self.put_block(g.ts_to_block(40, 0), h)
+        for side, link in ((1, (40, 2)), (2, (0, 0xff))):   # 40/1, 40/2: BAM, all allocated
+            bam = bytearray(256)
+            bam[0], bam[1] = link
+            bam[2] = ord("D")
+            bam[3] = 0xbb
+            bam[4:6] = disk_id[:2]
+            bam[6] = 0xc0
+            self.put_block(g.ts_to_block(40, side), bam)
+
+    def _cbm_bam_d64(self, disk_name, disk_id):
         # BAM: every block allocated (c64fs owns the rest of the disk)
         bam = bytearray(256)
         bam[0], bam[1], bam[2] = 18, 1, 0x41
@@ -167,21 +249,12 @@ class Image:
         bam[0xa5:0xa7] = b"2A"
         bam[0xa7:0xab] = b"\xa0" * 4
         self.put_block(ts_to_block(18, 0), bam)
-        d = bytearray(256)
-        d[0], d[1] = 0, 0xff
-        d[2] = 0x82  # PRG, closed
-        d[3], d[4] = block_to_ts(blocks[0])
-        d[5:21] = boot_name.upper()[:16].ljust(16, b"\xa0")
-        d[30] = len(blocks) & 0xff
-        d[31] = len(blocks) >> 8
-        self.put_block(ts_to_block(18, 1), d)
-        return used
 
     def cbm_files(self):
         out = []
-        t, s = 18, 1
+        t, s = self.geo.dir_first
         while t:
-            d = self.block(ts_to_block(t, s))
+            d = self.block(self.geo.ts_to_block(t, s))
             for e in range(8):
                 ent = d[e * 32:(e + 1) * 32]
                 if ent[2] & 0x07:
@@ -190,33 +263,35 @@ class Image:
         return out
 
     def cbm_blocks(self):
-        """Blocks the CBM side owns: track 18 and every CBM file's sectors."""
-        used = set(range(TRACK_START[18], TRACK_START[19]))
-        t, s = 18, 1
+        """Blocks the CBM side owns: its directory track and every CBM file's sectors."""
+        g = self.geo
+        used = g.dir_blocks()
+        t, s = g.dir_first
         while t:
-            d = self.block(ts_to_block(t, s))
+            d = self.block(g.ts_to_block(t, s))
             for e in range(8):
                 ent = d[e * 32:(e + 1) * 32]
                 if ent[2] & 0x07:
                     ft, fs = ent[3], ent[4]
-                    while ft and len(used) < NBLOCKS:
-                        b = ts_to_block(ft, fs)
+                    while ft and len(used) < g.nblocks:
+                        b = g.ts_to_block(ft, fs)
                         used.add(b)
                         ft, fs = self.block(b)[0], self.block(b)[1]
             t, s = d[0], d[1]
         return used
 
     def cbm_read(self, name):
-        t, s = 18, 1
+        g = self.geo
+        t, s = g.dir_first
         while t:
-            d = self.block(ts_to_block(t, s))
+            d = self.block(g.ts_to_block(t, s))
             for e in range(8):
                 ent = d[e * 32:(e + 1) * 32]
                 if ent[2] & 0x07 and bytes(ent[5:21]).rstrip(b"\xa0") == name:
                     out = bytearray()
                     ft, fs = ent[3], ent[4]
                     while ft:
-                        blk = self.block(ts_to_block(ft, fs))
+                        blk = self.block(g.ts_to_block(ft, fs))
                         if blk[0]:
                             out += blk[2:]
                         else:
@@ -242,6 +317,16 @@ class FS:
                            DEFAULT_VERSION)
         self.lay = LAYOUTS[version]
         self.now = build_time() if now is None else now
+        sb = img.block(SUPER_BLOCK)
+        if any(bytes(sb[0:5]) == lay.magic for lay in LAYOUTS.values()):
+            self.nblocks = sb[6] | sb[7] << 8
+            self.bm_start = sb[9] | sb[10] << 8
+            self.istart = sb[11] | sb[12] << 8
+        else:                               # not formatted yet: from the geometry
+            self.nblocks = img.geo.nblocks
+            self.bm_start = SUPER_BLOCK + 1
+            self.istart = self.bm_start + (self.nblocks + 2047) // 2048
+        self.nbm = self.istart - self.bm_start
 
     @property
     def version(self):
@@ -253,21 +338,22 @@ class FS:
         sb = bytearray(256)
         sb[0:5] = lay.magic
         sb[5] = lay.version
-        sb[6], sb[7] = NBLOCKS & 0xff, NBLOCKS >> 8
+        sb[6], sb[7] = self.nblocks & 0xff, self.nblocks >> 8
         sb[8] = lay.ninodes
-        sb[9], sb[10] = BITMAP_BLOCK & 0xff, BITMAP_BLOCK >> 8
-        sb[11], sb[12] = INODE_START & 0xff, INODE_START >> 8
+        sb[9], sb[10] = self.bm_start & 0xff, self.bm_start >> 8
+        sb[11], sb[12] = self.istart & 0xff, self.istart >> 8
         sb[13] = lay.inode_blocks
         sb[14] = ROOT_INO
         if lay.version >= 2:
             sb[SB_LAST_TIME:SB_LAST_TIME + 4] = le32(self.now)
         self.img.put_block(SUPER_BLOCK, sb)
-        self.img.put_block(BITMAP_BLOCK, bytearray(256))
+        for i in range(self.nbm):
+            self.img.put_block(self.bm_start + i, bytearray(256))
         for i in range(lay.inode_blocks):
-            self.img.put_block(INODE_START + i, bytearray(256))
-        for b in set(reserved) | set(range(SUPER_BLOCK, INODE_START + lay.inode_blocks)):
+            self.img.put_block(self.istart + i, bytearray(256))
+        for b in set(reserved) | set(range(SUPER_BLOCK, self.istart + lay.inode_blocks)):
             self.set_used(b, True)
-        for b in range(NBLOCKS, 2048):   # bitmap bits past the end of the disk
+        for b in range(self.nblocks, self.nbm * 2048):   # bitmap bits past the end of the disk
             self.set_used(b, True)
         # inode 0 is never allocated
         ino0 = self.read_inode(0)
@@ -306,19 +392,20 @@ class FS:
 
     # ---- bitmap ----
     def is_used(self, b):
-        bm = self.img.block(BITMAP_BLOCK)
-        return bool(bm[b >> 3] & (1 << (b & 7)))
+        bm = self.img.block(self.bm_start + (b >> 11))
+        return bool(bm[(b >> 3) & 255] & (1 << (b & 7)))
 
     def set_used(self, b, used):
-        bm = self.img.block(BITMAP_BLOCK)
+        blk = self.bm_start + (b >> 11)
+        bm = self.img.block(blk)
         if used:
-            bm[b >> 3] |= 1 << (b & 7)
+            bm[(b >> 3) & 255] |= 1 << (b & 7)
         else:
-            bm[b >> 3] &= ~(1 << (b & 7)) & 0xff
-        self.img.put_block(BITMAP_BLOCK, bm)
+            bm[(b >> 3) & 255] &= ~(1 << (b & 7)) & 0xff
+        self.img.put_block(blk, bm)
 
     def alloc_block(self):
-        for b in range(NBLOCKS):
+        for b in range(self.nblocks):
             if not self.is_used(b):
                 self.set_used(b, True)
                 self.img.put_block(b, bytearray(256))
@@ -326,12 +413,12 @@ class FS:
         raise OSError("ENOSPC")
 
     def free_blocks(self):
-        return sum(1 for b in range(2048) if not self.is_used(b))
+        return sum(1 for b in range(self.nbm * 2048) if not self.is_used(b))
 
     # ---- inodes ----
     def _inode_at(self, n):
         per = self.lay.per_block
-        return INODE_START + n // per, (n % per) * self.lay.inode_size
+        return self.istart + n // per, (n % per) * self.lay.inode_size
 
     def read_inode(self, n):
         b, off = self._inode_at(n)
@@ -502,8 +589,10 @@ class FS:
                 self.create(dst_dir, name, src.read_file(n))
 
 
-def build(out, boot, root, devs, version=DEFAULT_VERSION):
-    img = Image()
+def build(out, boot, root, devs, version=DEFAULT_VERSION, geo=None):
+    if geo is None:
+        geo = D81 if out.lower().endswith(".d81") else D64
+    img = Image(geo=geo)
     with open(boot, "rb") as f:
         boot_data = f.read()
     reserved = img.write_cbm(b"BREADBIN", boot_data)
@@ -566,6 +655,7 @@ def main(argv=None):
     b.add_argument("--root", required=True)
     b.add_argument("--dev", action="append", default=[])
     b.add_argument("--format", type=int, choices=sorted(LAYOUTS), default=DEFAULT_VERSION)
+    b.add_argument("--d81", action="store_true", help="a 1581 image (also when OUT ends in .d81)")
     u = sub.add_parser("upgrade")
     u.add_argument("src")
     u.add_argument("out")
@@ -578,7 +668,7 @@ def main(argv=None):
     c.add_argument("path")
     a = ap.parse_args(argv)
     if a.cmd == "build":
-        img = build(a.out, a.boot, a.root, a.dev, a.format)
+        img = build(a.out, a.boot, a.root, a.dev, a.format, D81 if a.d81 else None)
         print(f"{a.out}: {FS(img).free_blocks()} blocks free")
     elif a.cmd == "upgrade":
         img = upgrade(a.src, a.out, a.boot)

@@ -38,10 +38,8 @@ mo_ent:  .res 1
 ; dir_entry: A = k -> bp/Y = that 32-byte entry; carry set if past the end
 dir_entry:
         sta cb_k
-        lda #18
-        sta cb_t
-        lda #1
-        sta cb_s
+        lda ci_dev
+        jsr dir_first
         lda cb_k
         lsr a
         lsr a
@@ -73,9 +71,20 @@ dir_entry:
 @end:   sec
 @r:     rts
 
+; dir_first: A = dev -> cb_t/cb_s = its CBM directory's first block
+dir_first:
+        tax
+        ldy dev_geo,x
+        lda dir_t,y
+        sta cb_t
+        lda dir_s,y
+        sta cb_s
+        rts
+
 ; rd_sec: read sector cb_t/cb_s of ci_dev -> bp
 rd_sec: lda cb_t
         ldx cb_s
+        ldy ci_dev
         jsr ts_block
         lda ci_dev
         jmp bread
@@ -209,10 +218,8 @@ cbm_iget:
 cbm_lookup:
         lda #0
         sta cb_k
-        lda #18
-        sta cb_t
-        lda #1
-        sta cb_s
+        lda ci_dev
+        jsr dir_first
 @sec:   jsr rd_sec
         bcs @none
         lda #0
@@ -651,15 +658,18 @@ ch3_close:
 ; cbm_fsinfo: A = dev -> X/Y = free blocks (from the BAM)
 cbm_fsinfo:
         sta ci_dev
+        lda #0
+        sta cb_n
+        sta cb_n+1
+        ldx ci_dev
+        lda dev_geo,x
+        bne @81
         lda #18
         sta cb_t
         lda #0
         sta cb_s
         jsr rd_sec
         bcs @r
-        lda #0
-        sta cb_n
-        sta cb_n+1
         ldy #4
 @l:     cpy #4*18           ; skip the directory track
         beq @n
@@ -675,10 +685,38 @@ cbm_fsinfo:
         iny
         cpy #4*36
         bne @l
-        ldx cb_n
+@sum:   ldx cb_n
         ldy cb_n+1
         clc
 @r:     rts
+@81:    lda #1              ; a 1581: BAM 40/1 (tracks 1-40), 40/2 (41-80),
+        sta cb_s            ; 6 bytes a track from $10, the first the count
+@b:     lda #40
+        sta cb_t
+        jsr rd_sec
+        bcs @r
+        ldy #$10
+@l8:    cpy #$10+6*39       ; skip the directory track
+        bne @a8
+        lda cb_s
+        cmp #1
+        beq @n8
+@a8:    lda (bp),y
+        clc
+        adc cb_n
+        sta cb_n
+        bcc @n8
+        inc cb_n+1
+@n8:    tya
+        clc
+        adc #6
+        tay
+        bne @l8
+        inc cb_s
+        lda cb_s
+        cmp #3
+        bne @b
+        beq @sum
 
 ; ---------------------------------------------------------------------
 ; mount(A = drive 9-11, r0 = directory)
@@ -744,7 +782,7 @@ sys_mount:
 @ok:    jsr build_path
         bcs @r
         ldx mo_dev
-        jsr iec_open
+        jsr drive_open
         bcs @r
         lda mo_dev
         jsr binval
@@ -758,15 +796,21 @@ sys_mount:
         lda #FS_C64
         sta dev_type,x
         jmp @add
-@cbm:   ; a CBM DOS disk: track 18 sector 0 is a BAM with format 'A'
+@cbm:   ; a CBM DOS disk: its BAM (18/0) or header (40/0) has format
+        ; 'A' (a 1541) or 'D' (a 1581)
+        ldx mo_dev
+        ldy dev_geo,x
+        lda cbm_fmt,y
+        sta cb_n
+        ldx bam_lo,y
+        lda bam_hi,y
+        tay
         lda mo_dev
-        ldx #<357
-        ldy #>357
         jsr bread
         bcs @nodisk
         ldy #2
         lda (bp),y
-        cmp #$41
+        cmp cb_n
         bne @nodisk
         ldx mo_dev
         lda #FS_CBM
@@ -834,7 +878,7 @@ sys_diskio:
         sec
         rts
 @free:  ldx mo_dev
-        jsr iec_open
+        jsr drive_open
         bcs @r
         lda mo_dev
         jsr binval
@@ -1053,6 +1097,12 @@ sys_mntinfo:
         rts
 
 .segment "RODATA"
+dir_t:   .byte 18, 40       ; the CBM directory's first block: 1541, 1581
+dir_s:   .byte 1, 3
+cbm_fmt: .byte $41, $44     ; 1541 'A', 1581 'D'
+bam_lo:  .byte <357, <1560
+bam_hi:  .byte >357, >1560
+
 s_scr:  .byte "S0:", 0
 s_ren:  .byte "R0:", 0
 s_w0:   .byte "0:", 0
