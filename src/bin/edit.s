@@ -560,12 +560,17 @@ redraw: jsr fix_top
 at_end: lda p
         sec
         sbc #<text
-        cmp tlen
-        bne @r
+        pha
         lda p+1
         sbc #>text
         cmp tlen+1
-@r:     rts
+        bne @no
+        pla
+        cmp tlen
+        rts
+@no:    pla
+        lda #1              ; Z clear
+        rts
 
 status: jsr out_start
         lda #ROWS
