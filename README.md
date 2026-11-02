@@ -138,7 +138,7 @@ The boot disk is mounted at `/`. More drives work too: put a disk in drive 9, 10
 
 `sh` `init` `login` `ls [-l] [-a]` `cat` `echo` `grep [-v] [-c]` `wc` `head [-n]` `tail [-n]` `sort [-r]` `tee [-a]` `more` `edit` `touch` `cp` `mv` `rm` `mkdir` `rmdir` `pwd` `stat` `hexdump` `ps` `kill [-sig]` `sleep` `free` `df` `mount` `umount` `format` `uptime` `date` `uname [-a]` `version` `whoami` `passwd` `theme` `help` `clear` `count` `basic` `as`
 
-Shell built-ins: `cd`, `exit`, `kill`, `jobs`, `fg`, `bg`. CTRL-Z stops the foreground command.
+Shell built-ins: `cd`, `exit`, `kill`, `jobs`, `fg`, `bg`. CTRL-Z stops the foreground command. Cursor up and down recall earlier lines, and CTRL-I (TAB) completes a command or file name; pressed again, it lists the choices.
 
 ## Layout
 

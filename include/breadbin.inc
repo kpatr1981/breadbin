@@ -133,6 +133,7 @@ K_HOME  = $01
 K_CLR   = $0c
 K_DEL   = $08
 K_RET   = $0a
+K_TAB   = $09             ; CTRL-I
 K_F1    = $85
 K_F3    = $86
 K_F5    = $87

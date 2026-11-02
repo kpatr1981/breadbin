@@ -79,7 +79,7 @@ class Clock(unittest.TestCase):
 
 
 class Shell(unittest.TestCase):
-    """$?, && and ||, 2> and 2>&1, and history (cursor up/down)."""
+    """$?, && and ||, 2> and 2>&1, history (cursor up/down), completion."""
 
     @classmethod
     def setUpClass(cls):
@@ -140,6 +140,40 @@ class Shell(unittest.TestCase):
         s = self.v.wait_for("second", after="first\n/ $ echo second")
         self.assertTrue(s.rstrip().endswith("second\n/ $"), s)
 
+    def test_complete(self):
+        # CTRL-I (TAB) completes the word before the cursor: a command name
+        # from /bin (also after a |), a file name, '/' after a directory;
+        # with several matches it types what they share, and a second TAB
+        # lists them
+        def tab():
+            self.v._cmd("keybuf \\x09")
+            self.v._cmd("x", wait=0.5)
+        self.v.type("clear\n")
+        self.v.wait_for("$")
+        self.v.type("whoa")
+        tab()
+        self.v.type("\n")
+        self.v.wait_for("root", after="$ whoami")
+        self.v.type("echo hi | hexd")
+        tab()
+        self.v.type("\n")
+        self.v.wait_for("68 69", after="$ echo hi | hexdump")
+        self.v.type("clear\n")
+        self.v.wait_for("$")
+        self.v.type("echo /ho")
+        tab()
+        self.v.type("\n")
+        self.v.wait_for("/home/", after="$ echo /home/\n")
+        self.v.type("echo /home/h")
+        tab()                                   # hello.bas, hello.s: "hello."
+        tab()                                   # lists them
+        s = self.v.wait_for("$ echo /home/hello.", after="hello.bas")
+        listing = [l for l in s.splitlines() if "hello.bas" in l][-1]
+        self.assertEqual(sorted(listing.split()), ["hello.bas", "hello.s"])
+        self.v.type("s")
+        tab()
+        self.v.type("\n")
+        self.v.wait_for("$ echo /home/hello.s\n/home/hello.s")
 
 class Restore(unittest.TestCase):
     """An NMI (RESTORE) kills a foreground program even with interrupts off."""

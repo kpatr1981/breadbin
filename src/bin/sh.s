@@ -11,7 +11,8 @@
 ; Built-ins: cd, exit, kill (also /bin/kill), jobs, fg, bg. `sh file` runs a
 ; script. CTRL-Z stops the foreground job; fg/bg [pid] continue it.
 ; Words with * or ? are expanded against the directory they name.
-; On the console, cursor up/down recall the last 8 lines.
+; On the console, cursor up/down recall the last 8 lines and CTRL-I (TAB)
+; completes a command or file name.
 .include "../../include/breadbin.inc"
 .import print, eprint, putc, newline, print_dec, perr, argn, strlen, exit, parse_dec, dec_str
 .importzp lp1, lp2
@@ -34,7 +35,6 @@ in_fd:   .res 1
 interactive: .res 1
 ipos:    .res 1
 ilen:    .res 1
-ibuf:    .res 256
 line:    .res LINEMAX+1
 lnlen:   .res 1
 tbuf:    .res 256
@@ -86,6 +86,7 @@ hhead:   .res 1         ; the slot the next line goes to
 hsel:    .res 1         ; 0: a new line, k: the k-th most recent one
 kbuf:    .res 1
 hbuf:    .res HIST*HLEN
+ibuf = hbuf             ; reading a script or a pipe: no history then
 job:     .res 1         ; job of the pipeline being started (its first pid)
 fgjob:   .res 1
 g_tok:   .res 1
@@ -245,7 +246,8 @@ getline:
         rts
 
 ; readline: a line from the console, edited in raw mode: DEL, cursor up and
-; down walk the history, CTRL-D on an empty line is EOF (carry set)
+; down walk the history, CTRL-I (TAB) completes, CTRL-D on an empty line is
+; EOF (carry set)
 readline:
         lda #1
         jsr SYS_CONMODE
@@ -263,16 +265,15 @@ readline:
         beq @down
         cmp #4              ; CTRL-D
         beq @eof
+        cmp #K_TAB
+        beq @tab
         cmp #$20
         bcc @key
         cmp #$7f
         bcs @key
-        ldx lnlen
-        cpx #LINEMAX
-        bcs @key
-        sta line,x
-        inc lnlen
-        jsr putc
+        jsr addch
+        jmp @key
+@tab:   jsr complete
         jmp @key
 @del:   lda lnlen
         beq @key
@@ -310,6 +311,185 @@ readline:
         jsr hist_add
 @r:     clc
         rts
+
+; addch: A goes on the end of the line being edited (dropped when it's full)
+addch:  ldx lnlen
+        cpx #LINEMAX
+        bcs @r
+        sta line,x
+        inc lnlen
+        jmp putc
+@r:     rts
+
+; complete: the word before the cursor, plus '*', is expanded like a glob
+; (in /bin for a command name). What all the matches share is typed in, then
+; '/' or ' ' if there is only one; with nothing to add, they are listed.
+; More matches than the glob buffer holds: nothing happens.
+complete:
+        ldx lnlen
+@ws:    txa                 ; tsave = the word's start
+        beq @wd
+        lda line-1,x
+        jsr is_sep
+        beq @wd
+        dex
+        jmp @ws
+@wd:    stx tsave
+@cp:    dex                 ; a command name: nothing but spaces back to
+        bmi @cmd            ; the start or to | ; &
+        lda line,x
+        jsr is_sep
+        bne @arg
+        tya
+        beq @cp
+        cmp #4              ; < or >: a file name
+        bcs @arg
+@cmd:   ldx tsave           ; ... without a '/'
+@sl:    cpx lnlen
+        beq @bin
+        lda line,x
+        inx
+        cmp #'/'
+        bne @sl
+@arg:   ldy #0
+        beq @cpy
+@bin:   ldy #4
+@bc:    lda s_bin,y
+        sta tbuf,y
+        dey
+        bpl @bc
+        ldy #5
+@cpy:   ldx tsave           ; tbuf = ["/bin/"] word '*'
+@c:     cpx lnlen
+        beq @star
+        lda line,x
+        sta tbuf,y
+        inx
+        iny
+        bne @c
+@star:  sty xsave           ; xsave = the typed part's length
+        lda #'*'
+        sta tbuf,y
+        lda #0
+        sta tbuf+1,y
+        sta nargs
+        sta gpos
+        sta gpos+1
+        sta g_n
+        lda #<tbuf
+        sta zp1
+        lda #>tbuf
+        sta zp1+1
+        jsr glob
+        lda g_n
+        beq @x
+        lda nargs
+        cmp #MAXARG
+        bcs @x
+        lda gpos
+        cmp #256-64
+        bcc @go
+@x:     rts
+@go:    lda av              ; tlen = what the matches share
+        sta zp1
+        lda av+1
+        sta zp1+1
+        ldy #$ff
+@len:   iny
+        lda (zp1),y
+        bne @len
+        sty tlen
+        lda nargs
+        asl a
+        sta g_p
+        ldx #2
+@nx:    cpx g_p
+        bcs @cd
+        lda av,x
+        sta zp2
+        lda av+1,x
+        sta zp2+1
+        ldy #0
+@cm:    cpy tlen
+        bcs @nn
+        lda (zp1),y
+        cmp (zp2),y
+        bne @sh
+        iny
+        bne @cm
+@sh:    sty tlen
+@nn:    inx
+        inx
+        bne @nx
+@cd:    ldy xsave
+        cpy tlen
+        bcc @ad
+        lda nargs
+        cmp #2
+        bcs @list
+@ad:    cpy tlen
+        bcs @one
+        lda (zp1),y
+        sty g_ss
+        jsr addch
+        ldy g_ss
+        iny
+        bne @ad
+@one:   lda nargs
+        cmp #2
+        bcs @r
+        lda zp1             ; one match: '/' after a directory
+        sta r0
+        lda zp1+1
+        sta r0+1
+        lda #<g_ent
+        sta r1
+        lda #>g_ent
+        sta r1+1
+        jsr SYS_STAT
+        lda #' '
+        bcs @sp
+        ldx g_ent
+        cpx #T_DIR
+        bne @sp
+        lda #'/'
+@sp:    jmp addch
+@r:     rts
+@list:  jsr newline
+        ldx #0
+@li:    stx g_star
+        lda av,x
+        clc
+        adc g_d
+        pha
+        lda av+1,x
+        adc #0
+        tax
+        pla
+        jsr print
+        lda #' '
+        jsr putc
+        ldx g_star
+        inx
+        inx
+        cpx g_p
+        bcc @li
+        jsr newline
+        jsr prompt
+        ldx lnlen
+        lda #0
+        sta line,x
+        lda #<line
+        ldx #>line
+        jmp print
+
+; is_sep: A one of " |;&<>"? -> Z set, Y = its index
+is_sep: ldy #5
+@l:     cmp seps,y
+        beq @r
+        dey
+        bpl @l
+@r:     rts
 
 ; rawkey -> A = next key (4 = CTRL-D on error or EOF)
 rawkey: lda #<kbuf
@@ -1526,6 +1706,7 @@ strcmp_:
 
 .segment "RODATA"
 s_prompt:  .byte " $ ", 0
+seps:   .byte " |;&<>"
 s_done:    .byte "] done", 10, 0
 s_syntax:  .byte "sh: syntax error", 10, 0
 s_toolong: .byte "sh: line too long", 10, 0
