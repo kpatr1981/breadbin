@@ -70,7 +70,7 @@ On the boot disk, the CBM directory on track 18 lists a single file, `BREADBIN`:
 | 11 | 2 | first inode block (378) |
 | 13 | 1 | inode blocks (32) |
 | 14 | 1 | root directory inode (1) |
-| 15 | 4 | `last_time`: the newest time the filesystem has seen (seconds since 1970, local time; 0 until the kernel keeps time) |
+| 15 | 4 | `last_time`: the clock, saved (seconds since 1970, local time) |
 
 ### Bitmap (block 377)
 
@@ -89,10 +89,16 @@ An inode is 64 bytes, 4 per block. Inode 0 is reserved and inode 1 is the root d
 | 6 | 24 | 12 direct block numbers, 2 bytes each |
 | 30 | 2 | indirect block: a block holding 128 more block numbers |
 | 32 | 4 | `mtime`: contents last changed (seconds since 1970, local time; 0 = unknown) |
-| 36 | 4 | `ctime`: inode last changed |
+| 36 | 4 | `ctime`: inode last changed (contents, links, or `touch`) |
 | 40 | 24 | reserved, zero |
 
 12 direct blocks plus 128 through the indirect block give a largest file of 140 × 256 = 35,840 bytes, more than a C64 can hold in memory anyway.
+
+### Times
+
+Creating a file sets both times; writing to it or truncating it sets `mtime` and `ctime`; any other change to the inode (its link count, say) sets `ctime`. `touch` sets both. A copy (`cp`) is a new file with the current time; `mv` keeps both times, since only directory entries change. There is no access time: it would cost a disk write on every read.
+
+The C64 has no battery clock. The kernel's clock counts seconds from the timer interrupt and starts, at mount, from the disk's `last_time`. The kernel saves the clock there with the next inode change once its top three bytes have changed (every 256 seconds at most), and at mount moves the clock up to the next 256-second step past `last_time`, so the time never goes backwards across a reboot even without `sync`. `date` sets the clock; `mkimage.py` gives every file the host file's time and sets `last_time` to the build time.
 
 ### Directories
 

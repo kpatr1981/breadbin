@@ -343,7 +343,7 @@ class Touch(unittest.TestCase):
 
     def test_new_file(self):
         self.assertEqual(self.v.run("touch /home/t1 ; echo $?"), "0")
-        self.assertEqual(self.v.run("ls -l /home/t1"), "-      0 /home/t1")
+        self.assertRegex(self.v.run("ls -l /home/t1"), r"^-     0 \d\d-\d\d-\d\d \d\d:\d\d /home/t1$")
         self.v.run("rm /home/t1")
 
     def test_several_names(self):
@@ -352,9 +352,13 @@ class Touch(unittest.TestCase):
         self.assertEqual(self.v.run("ls /home/t3"), "/home/t3")
         self.v.run("rm /home/t2 /home/t3")
 
-    def test_existing_file_stays(self):
+    def test_existing_file_gets_the_time(self):
+        self.v.run("date 2030-05-06 07:08:09")
         self.v.run("echo hi > /home/t4")
+        self.v.run("date 2031-01-02 03:04:05")
+        self.assertIn("30-05-06 07:", self.v.run("ls -l /home/t4"))
         self.assertEqual(self.v.run("touch /home/t4 ; echo $?"), "0")
+        self.assertIn("31-01-02 03:", self.v.run("ls -l /home/t4"))
         self.assertEqual(self.v.run("cat /home/t4"), "hi")
         self.v.run("rm /home/t4")
 
@@ -371,6 +375,105 @@ class Touch(unittest.TestCase):
 
     def test_usage(self):
         self.assertEqual(self.v.run("touch ; echo $?"), "usage: touch name...\n1")
+
+
+class Times(unittest.TestCase):
+    """The clock, file times (format 2), date, ls -l and stat. VICE runs in
+    warp mode, so emulated time runs faster than the test's: the checks
+    allow for minutes passing between commands."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.img = copy_image("times")
+        cls.v = Vice(cls.img)
+        cls.v.wait_shell()
+        cls.first_date = cls.v.run("date")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.v.close()
+
+    def date_after(self, setting, wait):
+        self.v.run("date " + setting)
+        time.sleep(wait)
+        return self.v.run("date")
+
+    def test_clock_starts_from_the_disk(self):
+        # mkimage puts the build time in last_time; the clock starts there
+        year = time.localtime().tm_year
+        self.assertTrue(Times.first_date.startswith(str(year)), Times.first_date)
+
+    def test_host_times_on_the_image(self):
+        st = os.stat(os.path.join(ROOT, "build", "troot.all", "etc", "motd"))   # what the test image was built from
+        want = time.strftime("%y-%m-%d %H:%M", time.localtime(st.st_mtime))
+        self.assertIn(want, self.v.run("ls -l /etc/motd"))
+
+    def test_leap_day_and_new_month(self):
+        self.assertTrue(self.v.run("date 2024-02-29 23:59:58").startswith("2024-02-29 23:59:5"))
+        self.assertTrue(self.date_after("2024-02-29 23:59:59", 3).startswith("2024-03-01 00:"))
+
+    def test_new_year(self):
+        self.assertTrue(self.date_after("2025-12-31 23:59:59", 3).startswith("2026-01-01 00:"))
+
+    def test_2100_is_not_a_leap_year(self):
+        self.assertIn("usage", self.v.run("date 2100-02-29"))
+        self.assertTrue(self.date_after("2100-02-28 23:59:59", 3).startswith("2100-03-01 00:"))
+
+    def test_1970_and_bad_input(self):
+        self.assertTrue(self.v.run("date 1970-01-01 00:00").startswith("1970-01-01 00:00:0"))
+        for bad in ("1969-12-31", "2026-13-01", "2026-04-31", "24:00", "12:60", "12:00:60", "2026-1-1x"):
+            self.assertIn("usage", self.v.run("date " + bad), bad)
+
+    def test_date_keeps_the_other_half(self):
+        self.v.run("date 2027-03-04 05:06:07")
+        self.assertTrue(self.v.run("date 08:09").startswith("2027-03-04 08:09:0"))
+        self.assertTrue(self.v.run("date 2028-01-02").startswith("2028-01-02 08:"))
+
+    def test_stat_shows_both_times(self):
+        self.v.run("date 2029-08-09 10:11:12")
+        self.v.run("echo x > /home/st")
+        out = self.v.run("stat /home/st")
+        self.assertRegex(out, r"modify: 2029-08-09 10:\d\d:\d\d")
+        self.assertRegex(out, r"change: 2029-08-09 10:\d\d:\d\d")
+        self.v.run("rm /home/st")
+
+    def test_copy_gets_the_current_time_move_keeps_it(self):
+        self.v.run("date 2032-02-03 04:05:06")
+        self.v.run("echo y > /home/cm")
+        self.v.run("date 2033-03-04 05:06:07")
+        self.v.run("cp /home/cm /home/cm2")
+        self.v.run("mv /home/cm /home/cm3")
+        self.assertIn("33-03-04 05:", self.v.run("ls -l /home/cm2"))
+        self.assertIn("32-02-03 04:0", self.v.run("ls -l /home/cm3"))
+        self.v.run("rm /home/cm2 /home/cm3")
+
+    def test_ls_line_fits_40_columns(self):
+        self.v.run("echo z > /home/abcdefghijklmn")
+        line = self.v.run("ls -l /home").splitlines()
+        self.assertTrue(all(len(l) <= 40 for l in line), line)
+        self.v.run("rm /home/abcdefghijklmn")
+
+
+class TimeAcrossReboot(unittest.TestCase):
+    """last_time keeps the clock from going backwards across a reboot."""
+
+    def test_clock_survives_reboot(self):
+        img = copy_image("reboot")
+        with Vice(img) as v:
+            v.wait_shell()
+            v.run("date 2040-06-07 08:09:10")
+            v.run("echo t > /home/r")         # an inode change: saves the clock
+            v.run("sync")
+        with open(img, "rb") as f:
+            fs = mkimage.FS(mkimage.Image(f.read()))
+        self.assertGreaterEqual(fs.last_time(), fs.read_inode(fs.lookup("/home/r"))["mtime"] - 255)
+        with Vice(img) as v:
+            v.wait_shell()
+            out = v.run("date")[:19]
+        # moved up to the next 256 s step past last_time (1 to 256 s later),
+        # plus the boot (VICE runs in warp mode: emulated time runs fast)
+        self.assertGreaterEqual(out, "2040-06-07 08:09:11")
+        self.assertLessEqual(out, "2040-06-07 08:20:00")
 
 
 if __name__ == "__main__":

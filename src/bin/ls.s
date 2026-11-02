@@ -1,6 +1,7 @@
 ; ls [-l] [-a] [path...]: list directory contents
 .include "../../include/breadbin.inc"
 .import argn, perr, print, putc, newline, print_dec_w, strlen
+.import ep2cal, print_date, dt_ep
 .importzp lp1
 idx   = $23
 fd    = $24
@@ -228,7 +229,8 @@ show_name:
         jsr print
         jmp newline
 
-; show_long: A/X = name, st = stat
+; show_long: A/X = name, st = stat. "t  size YY-MM-DD hh:mm name": 37
+; columns with a 14-character name
 show_long:
         pha
         txa
@@ -238,9 +240,32 @@ show_long:
         jsr putc
         lda st+2
         ldx st+3
-        ldy #7
+        ldy #6
         jsr print_dec_w
         lda #' '
+        jsr putc
+        lda #0              ; mtime (0 = unknown: a CBM disk)
+        sta pad
+        ldx #3
+@t:     lda st+8,x
+        sta dt_ep,x
+        ora pad
+        sta pad
+        dex
+        bpl @t
+        lda pad
+        beq @none
+        jsr ep2cal
+        lda #0
+        jsr print_date
+        jmp @name
+@none:  lda #14
+        sta pad
+@sp:    lda #' '
+        jsr putc
+        dec pad
+        bne @sp
+@name:  lda #' '
         jsr putc
         pla
         tax
@@ -252,7 +277,7 @@ show_long:
 dot:   .byte ".", 0
 types: .byte "?-dc"
 .segment "BSS"
-st:    .res 8
+st:    .res 16
 ent:   .res 16
 pbuf:  .res 80
 pad:   .res 1

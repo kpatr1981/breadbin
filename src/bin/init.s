@@ -118,6 +118,6 @@ motd_path: .byte "/etc/motd", 0
 
 .segment "BSS"
 shpid: .res 1
-st:    .res 8
+st:    .res 16
 fd:    .res 1
 buf:   .res 128

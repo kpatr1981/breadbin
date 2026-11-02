@@ -6,7 +6,7 @@ FF_GONE = $80           ; f_flags: unlinked while open, freed at the last close
 .importzp fb, pp
 .import fs_name2, nm_dev, nm_ino, dl_off, f_done, dir_put, sb_ok
 .import fs_count_inodes, sb_ninodes, mnt_ino, mnt_active, p_pslot
-.import s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi, bm_alloc
+.import s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi, bm_alloc, stamp_m
 .importzp bp
 
 .segment "BSS"
@@ -417,7 +417,7 @@ sys_open:
 @inst:  jmp fd_install
 
 ; isatty(A = fd): carry clear if fd is the console
-.export sys_isatty
+.export sys_isatty, sys_utime
 sys_isatty:
         jsr fd_get
         bcs @r
@@ -1499,7 +1499,8 @@ sys_getcwd:
         clc
         rts
 
-; stat(r0 = path, r1 = buf[8]): type nlink size(3) ino dev major
+; stat(r0 = path, r1 = buf[16]): type nlink size(3) ino dev major
+;                                mtime(4) ctime(4)
 sys_stat:
         jsr set_pp_r0
         jsr namei
@@ -1532,7 +1533,27 @@ sys_stat:
         iny
         lda ci+I_MAJOR
         sta (r1),y
+        ldx #0
+@t:     iny
+        lda ci+I_MTIME,x
+        sta (r1),y
+        inx
+        cpx #8
+        bne @t
         clc
+@r:     rts
+
+; utime(r0 = path): its mtime and ctime = now
+sys_utime:
+        jsr set_pp_r0
+        jsr namei
+        bcs @r
+        lda nm_dev
+        ldx nm_ino
+        jsr iget
+        bcs @r
+        jsr stamp_m
+        jmp iput
 @r:     rts
 
 ; fsinfo(r0 = path, r1 = buf[8]): free blocks(2) total blocks(2)

@@ -188,7 +188,7 @@ class Boot(unittest.TestCase):
         self.assertEqual(self.run_("whoami"), "root")
         self.assertTrue(self.run_("uptime").startswith("up "))
         self.run_("date 13:45:10")
-        self.assertTrue(self.run_("date").startswith("13:4"))
+        self.assertIn(" 13:4", self.run_("date"))
         self.assertEqual(self.run_("version"), "breadbin 0.4 by kpatronas@gmail.com")
         size = os.path.getsize(os.path.join(ROOT, "rootfs", "etc", "motd"))
         self.assertIn("size: %d" % size, self.run_("stat /etc/motd"))
@@ -281,9 +281,9 @@ class Boot(unittest.TestCase):
 
     def test_27_date(self):
         for t in ("00:00:00", "12:00:00", "23:59:59"):
-            self.assertEqual(self.run_("date " + t), t)
+            self.assertTrue(self.run_("date " + t).endswith(" " + t))
         self.run_("date 11:59:59")
-        self.assertTrue(self.run_("date").startswith("12:0"))
+        self.assertIn(" 12:0", self.run_("date"))
 
 
 class Persistence(unittest.TestCase):

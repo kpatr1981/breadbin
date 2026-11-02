@@ -165,24 +165,6 @@ kmain:
         lda #MAP_KERNAL
         sta $01
 
-        ; TOD clock: 50 Hz mains on PAL machines (the KERNAL leaves the
-        ; CIA at 60 Hz, so it ran 17% slow), start it at 00:00:00.0
-        lda $dc0e
-        and #$7f
-        ldx $02a6           ; 1 = PAL
-        beq @ntsc
-        ora #$80
-@ntsc:  sta $dc0e
-        lda $dc0f
-        and #$7f            ; TOD writes set the clock, not the alarm
-        sta $dc0f
-        lda #$92            ; 12 AM = 00 (written as 12 PM: the CIA flips it)
-        sta $dc0b
-        lda #0
-        sta $dc0a
-        sta $dc09
-        sta $dc08
-
         jsr con_init
         lda #<banner
         ldx #>banner
