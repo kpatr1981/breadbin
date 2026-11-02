@@ -163,6 +163,7 @@ class Vice:
             if s.rstrip().endswith("/ $"):
                 return s
             time.sleep(0.5)
+        self._on_timeout()
         raise TimeoutError("no login or shell prompt:\n" + self.screen())
 
     def wait_for(self, text, timeout=60, after=None):
@@ -173,6 +174,7 @@ class Vice:
             if text in s if after is None else text in s.split(after)[-1]:
                 return s
             time.sleep(0.5)
+        self._on_timeout()
         raise TimeoutError(f"{text!r} not on screen:\n{self.screen()}")
 
     PROMPT = re.compile(r"^\S+ \$$")
@@ -215,8 +217,59 @@ class Vice:
             if pred(self.screen_lines()):
                 return
             time.sleep(0.4)
+        self._on_timeout()
         raise TimeoutError(f"timeout waiting for {what}:\n{self.screen()}")
 
+    # Kernel variables worth seeing when the system hangs (all in build/kernel.lbl).
+    DUMP_VARS = ["rq_dev", "rq_lo", "rq_hi", "trk", "sct", "cur_drive", "dev_geo",
+                 "fl_bad", "fl_up", "cur", "in_kernel", "p_state"]
+
+    def _on_timeout(self):
+        """With BB_HANGDUMP=file set, append the C64's registers and recent
+        instructions (with the kernel labels they fall in), drives 8 and 9's
+        registers, history and command buffer, some kernel variables, and the
+        screen after one more RETURN (unchanged: the system is frozen)."""
+        path = os.environ.get("BB_HANGDUMP")
+        if not path:
+            return
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        labels = {}
+        with open(os.path.join(root, "build", "kernel.lbl")) as f:
+            for line in f:
+                _, addr, name = line.split()[:3]
+                labels[name.lstrip(".")] = int(addr, 16)
+        by_addr = sorted((a, n) for n, a in labels.items())
+
+        def where(addr):
+            best = None
+            for a, n in by_addr:
+                if a > addr:
+                    break
+                best = "%s+%d" % (n, addr - a)
+            return best or ""
+
+        out = ["== HANGDUMP (monitor port %d)" % self.port, self._cmd("r", wait=0.5)]
+        for line in self._cmd("chis 60", wait=1.0).splitlines()[-60:]:
+            m = re.match(r"\.?C:([0-9a-f]{4})", line.strip(), re.I)
+            out.append(line + ("   " + where(int(m.group(1), 16)) if m else ""))
+        for d in ("8", "9"):
+            out.append("== drive " + d)
+            self._cmd("device %s:" % d, wait=0.5)
+            out += [self._cmd("r", wait=0.5), self._cmd("chis 40", wait=1.0),
+                    self._cmd("m 0200 0230", wait=0.5)]
+        self._cmd("device c:", wait=0.5)
+        self._cmd("x")
+        for n in self.DUMP_VARS:
+            if n in labels:
+                try:
+                    out.append("%s %s" % (n, self.mem(labels[n], labels[n] + 11)))
+                except RuntimeError as e:
+                    out.append("%s ? %s" % (n, e))
+        self.type("\n")
+        time.sleep(15)
+        out.append("== screen after RETURN\n" + self.screen())
+        with open(path, "a") as f:
+            f.write("\n".join(out) + "\n")
 
 if __name__ == "__main__":
     import sys
