@@ -193,9 +193,31 @@ load:   lda fname
         sta tlen
         lda r1+1
         sta tlen+1
+        cmp #>TEXTMAX
+        bcc @c              ; under 8 KB: all of it
+        lda #<key           ; a full buffer: is there more?
+        sta r0
+        lda #>key
+        sta r0+1
+        lda #1
+        sta r1
+        lda #0
+        sta r1+1
+        lda fd
+        jsr SYS_READ
+        bcs @c
+        lda r1
+        bne @big
 @c:     lda fd
         jsr SYS_CLOSE
 @r:     rts
+@big:   lda fd              ; saving would cut the file short: refuse it
+        jsr SYS_CLOSE
+        lda #<s_big
+        ldx #>s_big
+        jsr SYS_EPRINT
+        lda #1
+        jmp SYS_EXIT
 
 save:   lda fname+1
         bne @have
@@ -735,6 +757,7 @@ m_saved:   .byte " saved", 0
 m_err:     .byte " cannot save file", 0
 m_noname:  .byte " no file name: run edit file", 0
 m_full:    .byte " buffer full", 0
+s_big:     .byte "edit: file too big", 10, 0
 m_unsaved: .byte " unsaved changes! ^x again quits", 0
 
 .segment "BSS"
