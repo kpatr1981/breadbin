@@ -547,6 +547,10 @@ mark_used:
         beq @inodes
         jsr mark_cbm
 @inodes:
+        lda #0              ; block 0: never usable (0 in an inode = none);
+        sta blk             ; marked after mark_cbm, which takes a block
+        sta blk+1           ; marked already for a loop in a chain
+        jsr use
         lda #1
         sta n
 @l:     lda n
