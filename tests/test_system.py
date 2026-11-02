@@ -433,6 +433,91 @@ class Drives(unittest.TestCase):
         self.assertIn('"note"', d)
 
 
+def kernel_label(name):
+    with open(os.path.join(ROOT, "build", "kernel.lbl")) as f:
+        return next(int(l.split()[1], 16) for l in f if l.split()[2:] == ["." + name])
+
+
+class D81(unittest.TestCase):
+    """1581 drives and .d81 images: booting, a 1581 next to a 1541, format,
+    fsck, and normal 1581 disks under /mnt."""
+
+    def test_boot_from_a_1581(self):
+        img = scratch("t_boot.d81")
+        with open(os.path.join(ROOT, "build", "breadbin.d81"), "rb") as f, open(img, "wb") as g:
+            g.write(f.read())
+        with Vice(img, extra=["-drive8type", "1581"]) as v:
+            v.wait_shell()
+            self.assertIn("welcome to breadbin.", v.run("cat /etc/motd"))
+            v.run("cp /bin/as /home/as2")
+            self.assertEqual(v.run("wc /home/as2"), v.run("wc /bin/as").replace("/bin/as", "/home/as2"))
+            root = next(l for l in v.run("df").splitlines() if l.endswith(" /"))
+            self.assertEqual(root.split()[0], "3200", root)
+            self.assertEqual(v.run("fsck", timeout=300), "clean")
+            self.assertEqual(v.mem(kernel_label("dev_geo"), kernel_label("dev_geo"))[0], 1)
+
+    def test_a_1581_next_to_a_1541(self):
+        import mkimage
+        img9 = scratch("t_data9.d81")
+        mkimage.build(img9, os.path.join(ROOT, "build", "breadbin.prg"),
+                      os.path.join(ROOT, "build", "root"), [])
+        with Vice(IMAGE, extra=["-drive9type", "1581", "-9", img9]) as v:
+            v.wait_shell()
+            self.assertEqual(v.run("mount 9 /mnt"), "")
+            self.assertIn("drive 9 on /mnt (c64fs)", v.run("mount"))
+            v.run("cp /etc/help /mnt/home/h")
+            self.assertEqual(v.run("wc /mnt/home/h"), v.run("wc /etc/help").replace("/etc/help", "/mnt/home/h"))
+            self.assertEqual(v.run("fsck /mnt", timeout=300), "clean")
+            v.run("cat /bin/sh > /dev/null")        # drive 8 again
+            geo = v.mem(kernel_label("dev_geo"), kernel_label("dev_geo") + 2)
+            bad = v.mem(kernel_label("fl_bad"), kernel_label("fl_bad"))
+            self.assertEqual((geo[0], geo[2], bad[0]), (0, 1, 0))   # the 1541 still fast-reads
+            v.run("umount /mnt")
+        fs = mkimage.FS(mkimage.load(img9))
+        self.assertEqual(fs.read_file(fs.lookup("/home/h")),
+                         open(os.path.join(ROOT, "rootfs", "etc", "help"), "rb").read())
+
+    def test_format_and_fsck_a_1581_disk(self):
+        blank = scratch("t_blank9.d81")
+        with open(blank, "wb") as f:
+            f.write(bytes(819200))
+        with Vice(IMAGE, extra=["-drive9type", "1581", "-9", blank]) as v:
+            v.wait_shell()
+            v.type("clear\nformat 9 c64fs big\n")
+            v.wait_for("(y/n)")
+            v.type("y\n")
+            v.wait_for("done", timeout=900)     # 80 tracks, a fully emulated drive
+            v.run("mount 9 /mnt")
+            self.assertIn("(c64fs)", v.run("mount"))
+            mnt = next(l for l in v.run("df").splitlines() if l.endswith("/mnt"))
+            self.assertEqual(mnt.split()[0], "3200", mnt)
+            v.run("mkdir /mnt/src")
+            v.run("echo hello > /mnt/src/f")
+            self.assertEqual(v.run("cat /mnt/src/f"), "hello")
+            self.assertEqual(v.run("fsck /mnt", timeout=300), "clean")
+            v.run("umount /mnt")
+
+    def test_a_normal_1581_disk(self):
+        cbm = scratch("t_cbm9.d81")
+        if os.path.exists(cbm):
+            os.unlink(cbm)
+        subprocess.run(["c1541", "-format", "cbmdisk,cb", "d81", cbm,
+                        "-write", os.path.join(ROOT, "rootfs", "etc", "motd"), "motd,s"],
+                       capture_output=True, check=True)
+        with Vice(IMAGE, extra=["-drive9type", "1581", "-9", cbm]) as v:
+            v.wait_shell()
+            self.assertEqual(v.run("mount 9 /mnt"), "")
+            self.assertIn("drive 9 on /mnt (cbm dos)", v.run("mount"))
+            self.assertEqual(v.run("ls /mnt").split(), ["motd"])
+            self.assertIn("welcome to breadbin.", v.run("cat /mnt/motd"))
+            v.run("cp /etc/help /mnt/help")
+            self.assertEqual(sorted(v.run("ls /mnt").split()), ["help", "motd"])
+            mnt = next(l for l in v.run("df").splitlines() if l.endswith("/mnt"))
+            self.assertEqual(mnt.split()[0], "3160", mnt)
+            v.run("umount /mnt")
+        self.assertIn('"help"', c1541_dir(cbm))
+
+
 class FormatV2(unittest.TestCase):
     """Format 2 (magic C64F2) and format 1 disks keep apart in both directions."""
 

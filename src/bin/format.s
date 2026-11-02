@@ -6,8 +6,10 @@
 ; Both start with the drive's own DOS format (N0:), which lays down the
 ; sector headers. For c64fs every sector is then marked used in the CBM
 ; BAM (so the drive's DOS leaves the disk alone) and a fresh c64fs is
-; written: superblock at block 376, bitmap 377, inodes 378-393, root
-; directory in block 1 (block numbers as in tools/mkimage.py).
+; written: superblock at block 376, bitmap 377, inodes 378-409, root
+; directory in block 1. On a 1581 (3200 blocks) the bitmap takes 377-378,
+; the inodes 379-410, and track 40 holds the CBM side (block numbers as in
+; tools/mkimage.py).
 .include "../../include/breadbin.inc"
 .import argn, parse_dec, perr, print, eprint, newline
 .importzp lp1, lp2
@@ -153,7 +155,21 @@ start:  lda argc
         jmp done
 
 ; ---- c64fs on top of the fresh DOS format ----
-c64fs:  ; BAM: nothing free for the drive's DOS any more
+c64fs:  ; a 1581? Its header, 40/0 (block 1560 in its numbering), has format
+        ; 'D'; on a 1541 that block doesn't exist
+        lda #0
+        sta geo
+        lda #<1560
+        ldx #>1560
+        jsr rd_try
+        bcs @g
+        lda blk+2
+        cmp #'D'
+        bne @g
+        inc geo
+@g:     ; BAM: nothing free for the drive's DOS any more
+        lda geo
+        bne @bam81
         lda #<BAM_BLOCK
         ldx #>BAM_BLOCK
         jsr rd
@@ -166,7 +182,12 @@ c64fs:  ; BAM: nothing free for the drive's DOS any more
         lda #<BAM_BLOCK
         ldx #>BAM_BLOCK
         jsr wr
-        ; superblock
+        jmp @sb
+@bam81: lda #<1561          ; 40/1 and 40/2: 6 bytes per track from $10
+        jsr bam81
+        lda #<1562
+        jsr bam81
+@sb:    ; superblock
         jsr clear
         ldy #C64FS_MAGIC_LEN-1
 @mg:    lda magic,y
@@ -175,9 +196,10 @@ c64fs:  ; BAM: nothing free for the drive's DOS any more
         bpl @mg
         lda #C64FS_VERSION
         sta blk+5
-        lda #<683
+        ldx geo
+        lda nb_lo,x
         sta blk+6
-        lda #>683
+        lda nb_hi,x
         sta blk+7
         lda #INO_BLKS*4
         sta blk+8
@@ -185,8 +207,9 @@ c64fs:  ; BAM: nothing free for the drive's DOS any more
         sta blk+9
         lda #>BM_BLOCK
         sta blk+10
-        lda #<INO_START
+        lda is_lo,x
         sta blk+11
+        sta istart
         lda #>INO_START
         sta blk+12
         lda #INO_BLKS
@@ -196,32 +219,60 @@ c64fs:  ; BAM: nothing free for the drive's DOS any more
         lda #<SB_BLOCK
         ldx #>SB_BLOCK
         jsr wr
-        ; bitmap: blocks 0-1, 357-409 and everything past 682 are used
+        ; bitmap (blocks 0-2047): 0 (never usable), 1 (root directory), the
+        ; superblock, bitmap and inode blocks, the CBM directory track, and
+        ; on a 1541 everything past 682
         jsr clear
         lda #$03
-        sta blk                 ; blocks 0 (never usable) and 1 (root dir)
+        sta blk
+        lda istart
+        clc
+        adc #INO_BLKS
+        sta re_lo
+        lda #>INO_START
+        sta re_hi
+        ldx #<SB_BLOCK
+        ldy #>SB_BLOCK
+        jsr mark
+        lda geo
+        bne @t40
+        lda #<376
+        sta re_lo
+        lda #>376
+        sta re_hi
         ldx #<357
         ldy #>357
-@u1:    jsr setbit
-        inx
-        bne @n2
-        iny
-@n2:    cpy #>(INO_START+INO_BLKS)
-        bne @u1
-        cpx #<(INO_START+INO_BLKS)
-        bne @u1
+        jsr mark
+        lda #<2048
+        sta re_lo
+        lda #>2048
+        sta re_hi
         ldx #<683
         ldy #>683
-@u2:    jsr setbit
-        inx
-        bne @n3
-        iny
-@n3:    cpy #>2048
-        bne @u2
-        lda #<BM_BLOCK
+        jsr mark
+        jmp @bmw
+@t40:   lda #<1600
+        sta re_lo
+        lda #>1600
+        sta re_hi
+        ldx #<1560
+        ldy #>1560
+        jsr mark
+@bmw:   lda #<BM_BLOCK
         ldx #>BM_BLOCK
         jsr wr
-        ; inode table: inode 0 reserved, inode 1 = root directory
+        lda geo             ; a 1581: the second bitmap block, blocks
+        beq @ino            ; 2048-4095, of which 3200 on are past the end
+        jsr clear
+        ldy #144
+        lda #$ff
+@pe:    sta blk,y
+        iny
+        bne @pe
+        lda #<(BM_BLOCK+1)
+        ldx #>(BM_BLOCK+1)
+        jsr wr
+@ino:   ; inode table: inode 0 reserved, inode 1 = root directory
         lda #0
         sta ib
 @ib:    jsr clear
@@ -238,7 +289,7 @@ c64fs:  ; BAM: nothing free for the drive's DOS any more
         sta blk+INO_SIZE+6      ; direct[0]
 @iw:    lda ib
         clc
-        adc #<INO_START
+        adc istart
         pha
         lda #>INO_START
         adc #0
@@ -339,6 +390,41 @@ setbit: stx sx
         ldy sy
         rts
 
+; mark: set blocks X/Y .. re_hi/re_lo - 1 in the bitmap in blk
+mark:   jsr setbit
+        inx
+        bne @c
+        iny
+@c:     cpy re_hi
+        bne mark
+        cpx re_lo
+        bne mark
+        rts
+
+; bam81: A = low byte of a 1581 BAM block (high: 6): no track free there
+bam81:  sta bb
+        ldx #>1561
+        jsr rd
+        ldy #$10
+        lda #0
+@z:     sta blk,y
+        iny
+        bne @z
+        lda bb
+        ldx #>1561
+        jmp wr
+
+; rd_try: block A/X -> blk; carry set if it can't be read
+rd_try: sta r1
+        stx r1+1
+        lda #<blk
+        sta r0
+        lda #>blk
+        sta r0+1
+        lda drive
+        ldx #2
+        jmp SYS_DISKIO
+
 ; streq: (lp1) == (lp2) -> Z set
 streq:  ldy #0
 @l:     lda (lp1),y
@@ -358,6 +444,9 @@ pdrive: lda drive
 
 .segment "RODATA"
 magic:     .byte C64FS_MAGIC
+nb_lo:     .byte <683, <3200   ; blocks: 1541, 1581
+nb_hi:     .byte >683, >3200
+is_lo:     .byte <378, <379    ; first inode block (high byte 1)
 def_name:  .byte "breadbin", 0
 s_cbm:     .byte "cbm", 0
 s_c64fs:   .byte "c64fs", 0
@@ -377,6 +466,11 @@ ib:    .res 1
 buf:   .res 48
 blk:   .res 256
 sx:    .res 1
+geo:   .res 1      ; 0: a 1541, 1: a 1581
+istart: .res 1
+re_lo: .res 1
+re_hi: .res 1
+bb:    .res 1
 sy:    .res 1
 t:     .res 1
 mask:  .res 1

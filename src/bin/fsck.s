@@ -151,6 +151,11 @@ load:   lda path
         sta nbm
         lda sb+13           ; inode blocks
         sta niblk
+        lda nblocks+1       ; 3200 blocks: a 1581
+        cmp #>3200
+        lda #0
+        rol a
+        sta d81
         ; inodes: the first 32 bytes of each (the times aren't checked)
         lda #0
         sta n
@@ -603,20 +608,28 @@ mark_used:
 @nx:    inc n
         jmp @l
 
-; mark_cbm: track 18 and the blocks of every file in the CBM directory
+; mark_cbm: the CBM directory track (18 on a 1541, 40 on a 1581) and the
+; blocks of every file in the CBM directory
 mark_cbm:
-        lda #<357           ; track 18 = blocks 357-375
+        ldx d81
+        lda dts_lo,x
         sta blk
-        lda #>357
+        lda dts_hi,x
         sta blk+1
-@t18:   jsr use
+@trk:   jsr use
         inc blk
+        bne @tc
+        inc blk+1
+@tc:    ldx d81
         lda blk
-        cmp #<376
-        bne @t18
-        lda #18             ; directory chain from 18/1
+        cmp dte_lo,x
+        bne @trk
+        lda blk+1
+        cmp dte_hi,x
+        bne @trk
+        lda dir_t,x         ; directory chain from 18/1 or 40/3
         sta dt
-        lda #1
+        lda dir_s,x
         sta ds
 @dir:   lda dt
         beq @r
@@ -640,7 +653,8 @@ mark_cbm:
         sta fs
 @f:     lda ft              ; follow the file's sector chain
         beq @en
-        cmp #36
+        ldx d81
+        cmp max_t,x
         bcs @en
         ldx fs
         jsr ts_blk
@@ -667,7 +681,9 @@ mark_cbm:
 @r:     rts
 
 ; ts_blk: A = track, X = sector -> blk
-ts_blk: tay
+ts_blk: ldy d81
+        bne @81
+        tay
         dey
         txa
         clc
@@ -677,6 +693,39 @@ ts_blk: tay
         adc #0
         sta blk+1
         rts
+@81:    stx tmp3            ; a 1581: (track - 1) * 40 + sector
+        sec
+        sbc #1
+        sta blk
+        lda #0
+        sta blk+1
+        ldy #3
+@x8:    asl blk
+        rol blk+1
+        dey
+        bne @x8
+        lda blk             ; * 8, then * 32, added
+        sta t8
+        lda blk+1
+        sta t8+1
+        asl blk
+        rol blk+1
+        asl blk
+        rol blk+1
+        lda blk
+        clc
+        adc t8
+        sta blk
+        lda blk+1
+        adc t8+1
+        sta blk+1
+        lda blk
+        clc
+        adc tmp3
+        sta blk
+        bcc @r
+        inc blk+1
+@r:     rts
 
 ; bitpos: blk -> Y = byte in the chunk's bitmap, A = its bit; carry set if
 ; blk is not in this chunk (blocks chunk * 2048 .. +2047)
@@ -921,6 +970,13 @@ problem:
 
 .segment "RODATA"
 magic:   .byte C64FS_MAGIC
+dts_lo:  .byte <357, <1560      ; CBM directory track: 1541, 1581
+dts_hi:  .byte >357, >1560
+dte_lo:  .byte <376, <1600
+dte_hi:  .byte >376, >1600
+dir_t:   .byte 18, 40           ; first directory block
+dir_s:   .byte 1, 3
+max_t:   .byte 36, 81
 bits:    .byte 1, 2, 4, 8, 16, 32, 64, 128
 trk_lo:  .lobytes 0,21,42,63,84,105,126,147,168,189,210,231,252,273,294,315,336,357,376,395,414,433,452,471,490,508,526,544,562,580,598,615,632,649,666
 trk_hi:  .hibytes 0,21,42,63,84,105,126,147,168,189,210,231,252,273,294,315,336,357,376,395,414,433,452,471,490,508,526,544,562,580,598,615,632,649,666
@@ -968,6 +1024,8 @@ ds:      .res 1
 ft:      .res 1
 fs:      .res 1
 ibdirty: .res 64
+d81:     .res 1
+t8:      .res 2
 sb:      .res 256
 bm:      .res 256
 used:    .res 256

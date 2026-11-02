@@ -59,6 +59,12 @@ reu_banks: .res 1      ; RAM expansion size in 64 KB units
 ram_type:  .res 1      ; 0 none, 1 REU, 2 GeoRAM
 dev_present: .res NDEV
 dev_type: .res NDEV
+dev_geo:  .res NDEV      ; 0: a 1541 (683 blocks), 1: a 1581 (3200)
+gd_dev:   .res 1
+gd_fl:    .res 1
+gd_dc:    .res 1
+ts_hi:    .res 1
+ts_t:     .res 1
 cur_drive: .res 1
 cmdbuf:  .res 40
 cmdlen:  .res 1
@@ -107,7 +113,7 @@ blk_init:
         lda reu_banks
         sta rd_banks
         ldx #0
-        jsr iec_open
+        jsr drive_open
         bcc @drv
         lda reu_banks       ; no drive 8: boot from the REU instead
         beq @r
@@ -116,7 +122,9 @@ blk_init:
         lda #0
         sta dev_present+1
 @r:     rts
-@drv:   lda reu_banks       ; 4+ banks: the top 3 keep a copy of drive 8
+@drv:   lda dev_geo         ; (683 blocks: not for a 1581)
+        bne @r
+        lda reu_banks       ; 4+ banks: the top 3 keep a copy of drive 8
         cmp #DC_BANKS+1
         bcc @r
         sec
@@ -187,6 +195,47 @@ iec_open:
         sec
         rts
 
+; drive_open: X = dev. iec_open, then learn the drive's geometry: a 1581
+; reads track 40 sector 0 (block 1560 in its numbering) and finds its
+; header there, format 'D' at byte 2; a 1541 refuses the track. A 1581
+; gets no fast reads (the drive code is 1541 code). Not from inside
+; bread: it reads a block itself.
+drive_open:
+        jsr iec_open
+        bcs @r
+        stx gd_dev
+        lda #1
+        sta dev_geo,x
+        lda fl_bad,x
+        sta gd_fl
+        lda #1
+        sta fl_bad,x
+        lda dc_on           ; not into drive 8's REU copy (683 blocks)
+        sta gd_dc
+        lda #0
+        sta dc_on
+        txa
+        ldx #<1560
+        ldy #>1560
+        jsr bread
+        bcs @1541
+        ldy #2
+        lda (bp),y
+        cmp #'D'
+        beq @inv
+@1541:  ldx gd_dev
+        lda #0
+        sta dev_geo,x
+        lda gd_fl
+        sta fl_bad,x
+@inv:   lda gd_dc
+        sta dc_on
+        lda gd_dev
+        jsr binval          ; (that block was only a test)
+        ldx gd_dev
+        clc
+@r:     rts
+
 ; iec_close: X = dev
 iec_close:
         stx tmp2
@@ -226,9 +275,13 @@ iec_status:
         jsr cur_dev_set
         jmp cmd_status
 
-; ts_block: A = track, X = sector -> X/Y = linear block number
+; ts_block: A = track, X = sector, Y = dev -> X/Y = linear block number
 ts_block:
         stx tmp0
+        pha
+        lda dev_geo,y
+        bne @81
+        pla
         tay
         dey
         lda trk_lo,y
@@ -236,6 +289,32 @@ ts_block:
         adc tmp0
         tax
         lda trk_hi,y
+        adc #0
+        tay
+        rts
+@81:    pla                 ; a 1581: (track - 1) * 40 + sector
+        sec
+        sbc #1
+        sta ts_t
+        ldy #0
+        sty ts_hi
+        asl a
+        rol ts_hi
+        asl a
+        rol ts_hi
+        clc
+        adc ts_t            ; * 5
+        bcc @x8
+        inc ts_hi
+@x8:    ldy #3
+@s:     asl a
+        rol ts_hi
+        dey
+        bne @s              ; * 40
+        clc
+        adc tmp0
+        tax
+        lda ts_hi
         adc #0
         tay
         rts
@@ -590,7 +669,29 @@ buf_touch:
 ; ---- IEC (1541) ----
 ; rq_lo/hi -> trk/sec
 blk_to_ts:
-        ldx #34
+        ldx rq_dev
+        lda dev_geo,x
+        beq @1541
+        lda rq_hi           ; a 1581: 40 sectors on every track
+        sta ts_hi
+        lda rq_lo
+        ldx #1
+@d:     sec
+        sbc #40
+        tay
+        lda ts_hi
+        sbc #0
+        bcc @e
+        sta ts_hi
+        tya
+        inx
+        bne @d
+@e:     tya
+        adc #40             ; (carry clear) undo the last step
+        sta sct
+        stx trk
+        rts
+@1541:  ldx #34
 @l:     lda rq_hi
         cmp trk_hi,x
         bcc @n

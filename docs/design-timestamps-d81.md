@@ -1,6 +1,6 @@
 # Design: file timestamps and .d81 support
 
-Status: draft for discussion, 2026-11-01, revised 2026-11-02 after review in issue #4; magic, `last_time` and two open questions settled the same day. Step 1 (format v2) is implemented; steps 2–5 are not.
+Status: draft for discussion, 2026-11-01, revised 2026-11-02 after review in issue #4; magic, `last_time` and two open questions settled the same day. Steps 1–5 are implemented and tested in VICE; the drive check and the Ultimate still need a real-hardware run (issue #4). Differences from the plan below: the clock is saved in `last_time` with inode changes every 256 s, not on `sync`, and the kernel moves the clock up to the next 256 s step at mount; `SYS_CLOCK` gets and sets the clock; `mv` keeps `ctime`; the kernel's TOD clock code is gone (the clock runs from the timer).
 
 ## Summary
 
@@ -128,10 +128,10 @@ Both changes ship under one format version 2. The order below keeps every step t
 ### Order of work
 
 1. **Format v2** (done): 64-byte inodes with zeroed time fields, the new magic, `VERSION` 2, the superblock's `last_time`, and the matching changes in `mkimage.py`, `fsck`, `format`, the kernel's inode code and the RAM disk format (`fs_mkfs_reu`). Existing tests must pass unchanged, plus a test that a v1 kernel refuses a v2 disk.
-2. **Kernel clock and stamping:** the epoch counter, stamping on create, write and inode change, the `utime` syscall, the larger `SYS_STAT` buffer, and `last_time` saved and restored.
-3. **Programs:** the `src/lib` date routine, then `date`, `touch`, `ls -l`, `stat`, `mv`, `cp`.
-4. **.d81 geometry:** per-device geometry in `blk.s`, `mkimage.py --d81`, drive detection, fast loader and REU copy off on a 1581.
-5. **.d81 tools and CBM disks:** `format` and `fsck` on 1581 disks, and 1581 CBM disks under `/mnt` (`cbm.s`, `file.s`).
+2. **Kernel clock and stamping** (done): the epoch counter, stamping on create, write and inode change, the `utime` syscall, the larger `SYS_STAT` buffer, and `last_time` saved and restored.
+3. **Programs** (done): the `src/lib` date routine, then `date`, `touch`, `ls -l`, `stat`, `mv`, `cp`.
+4. **.d81 geometry** (done): per-device geometry in `blk.s`, `mkimage.py --d81`, drive detection, fast loader and REU copy off on a 1581.
+5. **.d81 tools and CBM disks** (done): `format` and `fsck` on 1581 disks, and 1581 CBM disks under `/mnt` (`cbm.s`, `file.s`).
 
 ### Testing
 
@@ -146,7 +146,7 @@ Both changes ship under one format version 2. The order below keeps every step t
 - [x] Which kernel RAM budget is acceptable for this? The 561 free bytes below the jump table, so the program pool doesn't shrink. `ci` alone takes 32 of them.
 - [x] Should a v2 kernel also mount v1 disks read-only, or only v2? Only v2; the new magic keeps the two apart in both directions.
 - [x] Should the 24 reserved inode bytes become 12 more direct pointers? No. They would save files of 3–6 KB one indirect-block read, which the block cache often absorbs anyway, at the cost of kernel bytes and the only spare room in the inode. They stay reserved for permissions and an owner.
-- [ ] Which drive-type check is reliable on VICE, real 1581s and the Ultimate? `M-R` and the track 40 read to be tried on an Ultimate with its drive set to 1581 (issue #4).
+- [ ] Which drive-type check is reliable on VICE, real 1581s and the Ultimate? The kernel reads track 40 sector 0 and looks for format `D` at byte 2 (works in VICE); to be confirmed on real drives. `M-R` and the track 40 read to be tried on an Ultimate with its drive set to 1581 (issue #4).
 - [ ] Is reading the Ultimate's clock worth adding, and how much code does it take? Being looked into on an Ultimate 64 (issue #4).
 - [x] Short date format for `ls -l` within 40 columns? `YY-MM-DD hh:mm`.
 - [ ] Who takes which part. Started in issue #4: drive detection and the Ultimate's clock, tested on an Ultimate 64 and Ultimate 64 Elite.

@@ -199,6 +199,56 @@ class TestFormat2(unittest.TestCase):
         self.assertEqual(M.fmt_time(1762039500), "25-11-01 23:25")
 
 
+class TestD81(unittest.TestCase):
+    """A 1581 image: 3200 blocks, CBM side on track 40, superblock at 376."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = self.tmp.name
+        root = os.path.join(t, "root")
+        make_tree(root)
+        self.boot = bytes(range(256)) * 10 + b"end"
+        bootf = os.path.join(t, "boot.prg")
+        with open(bootf, "wb") as f:
+            f.write(self.boot)
+        self.out = os.path.join(t, "x.d81")
+        M.build(self.out, bootf, root, ["console:1", "null:0"])
+        self.img = M.load(self.out)
+        self.fs = M.FS(self.img)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_size_and_geometry(self):
+        self.assertEqual(os.path.getsize(self.out), 819200)
+        self.assertIs(self.img.geo, M.D81)
+        self.assertEqual(M.D81.block_to_ts(376), (10, 16))
+        self.assertEqual(M.D81.ts_to_block(40, 0), 1560)
+
+    def test_cbm_side(self):
+        self.assertEqual(self.img.cbm_files(), [(b"BREADBIN", 0x82)])
+        self.assertEqual(self.img.cbm_read(b"BREADBIN"), self.boot)
+        hdr = self.img.block(1560)
+        self.assertEqual((hdr[0], hdr[1], hdr[2]), (40, 3, ord("D")))
+        self.assertEqual(bytes(hdr[25:27]), b"3D")
+
+    def test_superblock_and_bitmap(self):
+        sb = self.img.block(376)
+        self.assertEqual(bytes(sb[0:5]), b"C64F2")
+        self.assertEqual(sb[6] | sb[7] << 8, 3200)
+        self.assertEqual(sb[9] | sb[10] << 8, 377)      # two bitmap blocks
+        self.assertEqual(sb[11] | sb[12] << 8, 379)
+        for b in list(range(1560, 1600)) + list(range(376, 411)) + list(range(3200, 4096)):
+            self.assertTrue(self.fs.is_used(b), b)
+
+    def test_files_beyond_the_first_bitmap_block(self):
+        for i in range(18):                             # 18 x 35 KB: past block 2048
+            self.fs.create(M.ROOT_INO, b"big%d" % i, bytes([i]) * 35000)
+        n = self.fs.lookup("/big17")
+        self.assertEqual(self.fs.read_file(n), bytes([17]) * 35000)
+        self.assertGreater(self.fs.read_inode(n)["direct"][0], 2048)
+
+
 class TestUpgrade(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
