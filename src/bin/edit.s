@@ -49,7 +49,10 @@ start:  lda #0
         sta warned
         sta msg+1
         sta fname+1
+        lda #$ff
+        sta st_shown
         lda #1
+        sta need
         jsr argn
         bcs @new
         sta fname
@@ -96,7 +99,7 @@ main:   jsr getkey
         cmp #$7f
         bcs main
 @ins:   jsr insert
-        jmp @draw
+        jmp @edited
 @quit:  lda dirty
         beq @bye
         lda warned
@@ -131,8 +134,10 @@ main:   jsr getkey
         jmp main
 @dok:   jsr cur_dec
         jsr delete
-        jmp @draw
+        jmp @edited
 @kill:  jsr kill_line
+@edited:
+        inc need
         jmp @draw
 @hmove: jsr calc_col
         lda cx
@@ -508,8 +513,24 @@ fix_top:
         jmp @below
 @r:     rts
 
-redraw: jsr fix_top
+; redraw: text rows only if the text changed or the view scrolled, the status
+; line only if it changed (a full redraw per key flickers at 1 MHz)
+redraw: lda top
+        sta otop
+        lda top+1
+        sta otop+1
+        jsr fix_top
         jsr calc_col
+        lda need
+        bne @text
+        lda top
+        cmp otop
+        bne @text
+        lda top+1
+        cmp otop+1
+        beq @stat
+@text:  lda #0
+        sta need
         lda top
         clc
         adc #<text
@@ -548,8 +569,18 @@ redraw: jsr fix_top
         lda row
         cmp #ROWS
         bne @row
+@stat:  lda msg+1
+        bne @st
+        lda dirty
+        cmp st_shown
+        beq @cur
+@st:    lda #$ff
+        ldx msg+1
+        bne @sv
+        lda dirty
+@sv:    sta st_shown
         jsr status
-        ; place the cursor
+@cur:   ; place the cursor
         jsr out_start
         lda cy
         sta row
@@ -708,4 +739,7 @@ m_unsaved: .byte " unsaved changes! ^x again quits", 0
 
 .segment "BSS"
 cx_tmp: .res 1
+need:   .res 1          ; the text changed: redraw its rows
+otop:   .res 2
+st_shown: .res 1       ; dirty as shown on the status line, $ff = a message
 ox:     .res 1
