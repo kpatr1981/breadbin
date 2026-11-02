@@ -418,6 +418,7 @@ class Drives(unittest.TestCase):
             v.run("mkdir /mnt/src")
             v.run("echo hello > /mnt/src/f")
             self.assertEqual(v.run("cat /mnt/src/f"), "hello")
+            self.assertEqual(v.run("fsck /mnt", timeout=300), "clean")
             v.run("umount /mnt")
             v.type("clear\nformat 9 cbm plain\n")
             v.wait_for("(y/n)")
