@@ -13,3 +13,4 @@ shell:  a | b  > f  >> f  < f  cmd &
 keys:   | is shift + - (vice: | key)
         run/stop interrupts a command
         ctrl-z stops it: fg, bg resume
+        ctrl-i completes names

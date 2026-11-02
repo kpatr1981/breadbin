@@ -163,7 +163,7 @@ Every system call is a `jsr` into the jump table at `$CF00`. Its addresses are s
 - `/dev/console` is the screen and keyboard and `/dev/null` discards. `/tmp` is a RAM disk when an REU or GeoRAM is present.
 - Reading fd 0 when it is the console blocks until the user presses RETURN, and returns the line with its `10`. CTRL-D on an empty line is end of file.
 
-**Raw console mode** is for full-screen programs like `edit`. Call `SYS_CONMODE` with A = 1, and each `SYS_READ` then returns one key with no echo. Cursor keys arrive as control codes: `K_UP`, `K_DOWN`, `K_LEFT`, `K_RIGHT`, `K_HOME`, `K_CLR`, `K_DEL`, `K_RET`, F1–F8 as `$85`–`$8C`, CTRL-letters as `$01`–`$1A`. Set mode 0 before you exit. The kernel also drops raw mode when the process that set it exits. In raw mode CTRL-Z is an ordinary key, and RUN/STOP still interrupts.
+**Raw console mode** is for full-screen programs like `edit`. Call `SYS_CONMODE` with A = 1, and each `SYS_READ` then returns one key with no echo. Cursor keys arrive as control codes: `K_UP`, `K_DOWN`, `K_LEFT`, `K_RIGHT`, `K_HOME`, `K_CLR`, `K_DEL`, `K_RET`, `K_TAB` (CTRL-I), F1–F8 as `$85`–`$8C`, CTRL-letters as `$01`–`$1A`. Set mode 0 before you exit. The kernel also drops raw mode when the process that set it exits. In raw mode CTRL-Z is an ordinary key, and RUN/STOP still interrupts.
 
 **Output escapes** (write them to the console like normal bytes):
 
