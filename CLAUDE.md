@@ -25,6 +25,8 @@ does, `docs/programming.md` for the system calls and memory map, and
   `python3 tools/ptest.py --failed` reruns only what failed. Release checks also run `make test-ntsc` and `make test-openroms`.
 - Don't rebuild `build/` while a full run is going: the tests copy their images from it.
 - `make test-host` runs the fast host tests (image builder, relocation), no VICE.
+- The tests run VICE in warp mode, so the C64's clock runs faster than the test's own: check what time arithmetic
+  must get right (a date rolling over, which file is newer), never how many minutes passed.
 
 ## Rules
 
@@ -40,6 +42,9 @@ does, `docs/programming.md` for the system calls and memory map, and
   Any change to that handshake must be checked by reading blocks both ways (fast and slow) and comparing: a boot alone
   looks fine with a corrupted last byte. The C64 side must only ever wait longer than needed. The drive code must stay under 256 bytes.
   On a timeout the kernel falls back to `U1` reads, which keeps SD2IEC working.
+- **Waiting for a bus pulse:** a fast drive (a 1581) holds CLK for only ~30 cycles at the talk turnaround. A wait for a
+  pulse must poll in a tight loop (`bit PRA` / `bvc`, about 11 cycles a pass) and check its timeout only every few
+  hundred passes; a loop that calls a routine on every pass misses the pulse and the C64 and the drive deadlock.
 - **Disk format changes** touch five places that must agree: the kernel's mount code, `fs_mkfs_reu` in `src/kernel/fs.s`
   (which formats the `/tmp` RAM disk itself), `tools/mkimage.py`, `src/bin/fsck.s` and `src/bin/format.s`.
   An incompatible change also changes the `C64FS` magic, because released kernels check only the magic, not `VERSION`.
@@ -83,3 +88,6 @@ Two people work on this repo, each with their own Claude session. They share wha
 ## Debugging
 
 - VICE monitor: `chis` after a breakpoint shows recent CPU history; `device 8:` then `m 0200 022f` shows the drive's command buffer.
+- A test that hangs: rerun it with `BB_HANGDUMP=file`. On a timeout the harness appends to `file` the C64's registers
+  and recent instructions (with kernel labels), drives 8 and 9's registers, history and command buffer, and the screen.
+  That shows who waits for whom.
