@@ -325,23 +325,65 @@ delete: jsr ptr_cur         ; q = text + cur
         sta dirty
         rts
 
-; kill_line: delete the line the cursor is on (including its newline)
+; kill_line: delete the line the cursor is on (including its newline),
+; moving the rest of the text down once rather than once per character
 kill_line:
         jsr line_start_cur
-@l:     lda cur
-        cmp tlen
-        bne @n
-        lda cur+1
-        cmp tlen+1
-        beq @r
-@n:     jsr ptr_cur
+        jsr ptr_end         ; p = text + tlen, q = text + cur
+        lda p
+        sta t16             ; t16 = the end of the text
+        lda p+1
+        sta t16+1
+        lda q
+        sta p
+        lda q+1
+        sta p+1
         ldy #0
-        lda (q),y
-        pha
-        jsr delete
-        pla
-        cmp #K_RET
-        bne @l
+@scan:  lda p               ; p = past the line's newline, or the end
+        cmp t16
+        bne @s
+        lda p+1
+        cmp t16+1
+        beq @cut
+@s:     lda (p),y
+        inc p
+        bne @s2
+        inc p+1
+@s2:    cmp #K_RET
+        bne @scan
+@cut:   lda p               ; tlen -= p - q
+        sec
+        sbc q
+        sta tmp
+        lda p+1
+        sbc q+1
+        sta tmp+1
+        ora tmp
+        beq @r              ; an empty last line: nothing to delete
+        lda tlen
+        sec
+        sbc tmp
+        sta tlen
+        lda tlen+1
+        sbc tmp+1
+        sta tlen+1
+        lda #1
+        sta dirty
+@mv:    lda p               ; text from p down to q
+        cmp t16
+        bne @m
+        lda p+1
+        cmp t16+1
+        beq @r
+@m:     lda (p),y
+        sta (q),y
+        inc p
+        bne @m2
+        inc p+1
+@m2:    inc q
+        bne @mv
+        inc q+1
+        jmp @mv
 @r:     lda #0
         sta want
         rts
