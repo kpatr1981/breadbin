@@ -291,7 +291,7 @@ Most classic text tools (`rev`, `tr`, `uniq`, `nl`, `tee`, `cut`, `tail`, `sort`
 2. **Read bytes with `getc`**, which buffers 256 bytes per system call. Calling `SYS_READ` for every byte is slow.
 3. **Write with `putc`/`print`.** Each call is a system call, so for large output collect a line in a buffer and `SYS_WRITE` it at once.
 4. **Errors go to fd 2** via `perr`. Exit 0 on success and 1 on error.
-5. **Size buffers in BSS.** Every page you reserve is memory another process can't have. The pool is 31 KB for everything that is running.
+5. **Size buffers in BSS.** Every page you reserve is memory another process can't have. The pool is 31 KB for everything that is running. With an REU, processes that aren't running are moved out when it's full, but each move costs time.
 6. **Stay small on the stack.** Use BSS for anything bigger than a few bytes.
 
 [`docs/examples/rev.s`](examples/rev.s) is a complete port of `rev`: about 60 lines, and 1.4 KB as an executable. Copy it to `src/bin/rev.s`, run `make`, and:
@@ -324,4 +324,4 @@ Things that need more thought on a C64:
 | File name | 14 characters |
 | File size | 35 KB on c64fs |
 | Disk drives | 8 (boot), 9, 10, 11 |
-| RAM disk | REU (up to 8 MB detected) or GeoRAM (up to 4 MB); `/tmp` uses the first 512 KB |
+| RAM disk | REU (up to 8 MB detected) or GeoRAM (up to 4 MB); `/tmp` uses all of it but the drive 8 copy and, on an REU, the 32 KB swap area |

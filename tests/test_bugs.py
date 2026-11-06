@@ -142,7 +142,7 @@ def tmp_inodes(df):
 
 
 class SmallRAMDisk(unittest.TestCase):
-    """A 128 KB REU: a /tmp (512 blocks) small enough to fill."""
+    """A 128 KB REU: a /tmp (384 blocks: 512 less the swap area) small enough to fill."""
 
     def test_full_disk_does_not_leak_inodes(self):
         with Vice(copy_image("reu128"), extra=["-reu", "-reusize", "128"]) as v:

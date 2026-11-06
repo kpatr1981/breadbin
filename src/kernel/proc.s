@@ -149,8 +149,10 @@ sched:
         ldx #0
 @c:     lda p_state,x
         cmp #PS_READY
-        beq sched_found
-        dey
+        bne @nr
+        jsr in_core         ; its pages must be in the pool (swap.s)
+        bcc sched_found
+@nr:    dey
         bne @n
         ; nothing ready: idle with interrupts on until something wakes
         lda #$ff
@@ -161,8 +163,10 @@ sched:
         ldx #MAXPROC-1
 @il:    lda p_state,x
         cmp #PS_READY
-        beq sched_found
-        dex
+        bne @in
+        jsr in_core
+        bcc sched_found
+@in:    dex
         bpl @il
         jmp @idle
 

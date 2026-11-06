@@ -3,6 +3,13 @@
 
 .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__, __RODATA_SIZE__, __DATA_SIZE__
 .import __JUMPTAB_LOAD__, __JUMPTAB_RUN__, __BSS_RUN__, __BSS_SIZE__, __ZP_SIZE__
+.import __HICODE_LOAD__, __HICODE_RUN__, __HICODE_SIZE__, __HIBSS_RUN__, __HIBSS_SIZE__
+.import __HI_START__
+; the swap code sits under the KERNAL ROM after the process tables, clear
+; of the CPU vectors, and its tables are cleared with an 8-bit index
+.assert P_NAME + MAXPROC*NAMELEN <= __HI_START__, lderror, "HI overlaps the process tables"
+.assert __HICODE_RUN__ + __HICODE_SIZE__ + __HIBSS_SIZE__ + 255 < $FF00, lderror, "HI too big"
+.assert __HIBSS_SIZE__ < 256, lderror, "HIBSS over 255 bytes"
 
 .segment "ZEROPAGE"
 cur:          .res 1    ; current process slot, $FF = none
@@ -166,7 +173,33 @@ kmain:
         sta $fffe
         lda #>rom_irq
         sta $ffff
-        lda #MAP_KERNAL
+        ; the swap code (swap.s) runs from there too: copy it, clear its tables
+        lda #<__HICODE_LOAD__
+        sta p1
+        lda #>__HICODE_LOAD__
+        sta p1+1
+        lda #<__HICODE_RUN__
+        sta p2
+        lda #>__HICODE_RUN__
+        sta p2+1
+        ldx #>(__HICODE_SIZE__ + __HIBSS_SIZE__ + 255)
+        ldy #0
+@hc:    lda (p1),y          ; (whole pages: the tail past HICODE is then
+        sta (p2),y          ; cleared below, as HIBSS follows it)
+        iny
+        bne @hc
+        inc p1+1
+        inc p2+1
+        dex
+        bne @hc
+        ldy #0
+        tya
+@hz:    cpy #<__HIBSS_SIZE__
+        beq @hd
+        sta __HIBSS_RUN__,y
+        iny
+        bne @hz
+@hd:    lda #MAP_KERNAL
         sta $01
 
         jsr con_init

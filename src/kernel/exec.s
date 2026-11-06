@@ -230,7 +230,7 @@ load_prog:
         bcs @nomem
 @np:    sta npages
         tay
-        jsr page_alloc
+        jsr alloc_pages     ; (moves others to the REU if need be)
         bcc @mem
 @nomem: lda #ENOMEM
         sec

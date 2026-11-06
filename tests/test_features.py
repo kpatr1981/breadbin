@@ -237,13 +237,14 @@ class Fsck(unittest.TestCase):
 
 class BigRAMDisk(unittest.TestCase):
     """A 2 MB REU: /tmp gets all of it but the 3 banks that keep a copy of
-    drive 8: 29 banks, 7424 blocks (four bitmap blocks)."""
+    drive 8 and the 128 pages of the swap area: 7296 blocks (four bitmap
+    blocks)."""
 
     def test_full_size_tmp(self):
         with Vice(copy_image("reu2m"), extra=["-reu", "-reusize", "2048"]) as v:
             v.wait_shell()
             tmp = next(l for l in v.run("df").splitlines() if l.endswith("/tmp"))
-            self.assertEqual(tmp.split()[0], "7424", tmp)
+            self.assertEqual(tmp.split()[0], "7296", tmp)
             v.run("cd /tmp")
             v.run("cp /bin/as a")                       # 23 blocks
             v.run("cat a a a a a a a a > b")
@@ -590,6 +591,39 @@ class Edit(unittest.TestCase):
         self.quit()
         self.assertEqual(self.v.run("wc /home/kill").split()[:3], ["1", "1", "4"])
 
+
+class Swap(unittest.TestCase):
+    """With an REU, processes that aren't running go to the REU when the
+    pool runs out: four 41-page memhogs at once (186 pages with sh and init,
+    in a 124-page pool) all keep their memory."""
+
+    def hogs(self, v, n, rounds, out):
+        for i in range(1, n + 1):
+            v.run("/test/memhog %d > %s/h%d &" % (rounds, out, i))
+        self.assertEqual(v.run("ps").count("memhog"), n)     # all alive at once
+
+    def test_more_than_the_pool(self):
+        with Vice(copy_image("swap"), reu=True) as v:
+            v.wait_shell()
+            tmp = next(l for l in v.run("df").splitlines() if l.endswith("/tmp"))
+            self.assertEqual(tmp.split()[0], "1152", tmp)    # 5 banks, less 128 blocks
+            self.hogs(v, 3, 100, "/tmp")              # (warp: ~1 min)
+            self.assertEqual(v.run("/test/memhog", timeout=300).splitlines()[0], "ok")
+            end = time.time() + 300
+            while time.time() < end:                         # (skip "[n] done" notices)
+                out = [w for w in v.run("cat /tmp/h1 /tmp/h2 /tmp/h3").split() if w in ("ok", "bad")]
+                if len(out) == 3:
+                    break
+                time.sleep(2)
+            self.assertEqual(out, ["ok"] * 3)
+            self.assertEqual(v.run("echo still here"), "still here")
+            self.assertEqual(v.run("fsck /tmp", timeout=300), "clean")
+
+    def test_without_an_reu_the_pool_is_the_limit(self):
+        with Vice(copy_image("noswap")) as v:
+            v.wait_shell()
+            self.hogs(v, 2, 100, "/home")
+            self.assertIn("out of memory", v.run("/test/memhog 1", timeout=120))
 
 if __name__ == "__main__":
     unittest.main()
