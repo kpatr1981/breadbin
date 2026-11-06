@@ -65,6 +65,9 @@ SYS_BASENAME = SYS_BASE + 3*51  ; A/X = path -> A/X = the part after the last '/
 SYS_EXEC     = SYS_BASE + 3*52  ; r0 = path, r1 = argv: this process becomes that program (returns only on error)
 SYS_CLOCK    = SYS_BASE + 3*53  ; A = 0: r0 = buf[4] <- seconds since 1970 (local); A = 1: set it from buf[4] (root)
 SYS_UTIME    = SYS_BASE + 3*54  ; r0 = path: its mtime and ctime = now
+SYS_SEEK     = SYS_BASE + 3*55  ; A = fd, r0 + r1 lo = offset (24 bits), Y = SEEK_SET/SEEK_END -> r0 + r1 lo = new position
+SEEK_SET     = 0                ; offset from the start
+SEEK_END     = 2                ; offset back from the end
 
 ; argument registers (zero page, saved per process)
 r0 = $02

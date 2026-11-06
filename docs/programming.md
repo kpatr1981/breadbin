@@ -145,6 +145,7 @@ Every system call is a `jsr` into the jump table at `$CF00`. Its addresses are s
 | `SYS_CONMODE` | A = 0 cooked, 1 raw | | raw: one key per read, no echo (see below) |
 | `SYS_STAT` | r0 = path, r1 = 16-byte buffer | | type, nlink, size (3 bytes), inode, device, major, mtime (4), ctime (4). Types `T_FILE`, `T_DIR`, `T_CHR`. Times as `SYS_CLOCK`'s; 0 = unknown (a normal C64 disk). 0.4 and earlier filled only 8 bytes |
 | `SYS_UTIME` | r0 = path | | sets its mtime and ctime to now (`touch`). Does nothing on a normal C64 disk |
+| `SYS_SEEK` | A = fd, r0 + r1 low byte = offset (24 bits), Y = `SEEK_SET` or `SEEK_END` | r0 + r1 low byte = the new position | `SEEK_SET` counts from the start, `SEEK_END` back from the end. `EINVAL` past either end, and on anything but a file on a Breadbin disk (a pipe, the console, a normal C64 disk) |
 | `SYS_MKDIR` / `SYS_RMDIR` / `SYS_UNLINK` | r0 = path | | |
 | `SYS_RENAME` | r0 = old, r1 = new | | same device only (`EXDEV`) |
 | `SYS_CHDIR` | r0 = path | | |
