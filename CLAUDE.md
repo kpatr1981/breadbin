@@ -95,6 +95,8 @@ Two people work on this repo, each with their own Claude session. They share wha
 ## Debugging
 
 - VICE monitor: `chis` after a breakpoint shows recent CPU history; `device 8:` then `m 0200 022f` shows the drive's command buffer.
+- Tests run VICE without a window (`-console`); `BB_WINDOW=1` shows it. Don't change `tests/` or `build/` while a run is
+  going: each class loads the test files and copies the image when it starts.
 - A test that hangs: rerun it with `BB_HANGDUMP=file`. On a timeout the harness appends to `file` the C64's registers
   and recent instructions (with kernel labels), drives 8 and 9's registers, history and command buffer, and the screen.
   That shows who waits for whom.
