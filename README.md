@@ -85,13 +85,14 @@ Breadbin has only been tested in VICE so far. On a real machine it should work t
 | Ultimate 64, 1541 Ultimate-II+ | should work | Mount `breadbin.d64` on drive 8. Its REU (512 KB or more) gives you `/tmp`. Writes go into the mounted image: save it back, or turn on write-back, to keep them. |
 | Pi1541 | should work | It emulates the 1541's hardware, so it behaves like a real drive. |
 | SD2IEC | untested | Mount the image (`CD:breadbin.d64`). It depends on the firmware handling the block commands on `.d64` images. |
-| Kung Fu Flash, EasyFlash | won't work | Their cartridge ROM sits where the kernel lives (see below). |
+| Kung Fu Flash | needs a drive 8 | It can start the boot program, and it is out of the way once Breadbin runs ([#15](https://github.com/kpatr1981/breadbin/issues/15)). But everything else is on `breadbin.d64`, which must be on drive 8 (a 1541, Pi1541 or SD2IEC); without it the kernel stops with `no breadbin disk`. |
+| EasyFlash, Action Replay, Final Cartridge | won't work | Their ROM stays on, where the kernel lives (see below). |
 
 Then type `LOAD"*",8,1` and `RUN`, as in VICE.
 
 Things to know:
 
-- **No cartridges.** The kernel runs at `$8400–$CFFF`, over the area where a cartridge maps its ROM, so Action Replay, Final Cartridge, EasyFlash and the like must be removed or switched off. An REU or a GeoRAM is fine: they only use the I/O area.
+- **No cartridges that stay on.** The kernel runs at `$8400–$CFFF`, over the area where a cartridge maps its ROM, so Action Replay, Final Cartridge, EasyFlash and the like must be removed or switched off. A cartridge that only starts the program and then gets out of the way, as Kung Fu Flash does, is fine. An REU or a GeoRAM is fine: they only use the I/O area.
 - **Disk access is slowish.** Breadbin has its own serial bus driver, and it loads a small routine into the 1541 that sends sectors about twice as fast as the standard protocol (the disk's rotation is the limit after that). Loading a command from a floppy still takes a second or two, and the system pauses while the drive works. A drive that can't run 1541 code (SD2IEC) gets the standard protocol. JiffyDOS doesn't help, but it doesn't get in the way either. With an REU of 256 KB or more, every block read from drive 8 is kept in the REU, so the second load of a command is instant.
 - **Handled:** PAL and NTSC, C64s on DC power supplies (the clock runs from the timer, not the TOD input), and a C128 in C64 mode with a 1541 or 1571.
 - **1581 drives** work too: `build/breadbin.d81` boots from a 1581 (or an Ultimate with a .d81 mounted) and has 3200 blocks, and a 1581 in drive 9–11 takes Breadbin disks, normal 1581 disks and `format`. The fast disk routine is 1541 code, so a 1581 uses the standard protocol. Tested in VICE only so far.

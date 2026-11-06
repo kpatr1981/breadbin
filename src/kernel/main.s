@@ -93,7 +93,8 @@ s_reu:  .byte "reu: ", 0
 s_geo:  .byte "georam: ", 0
 s_reuk: .byte " x 64k", 10, 0
 s_noreu: .byte "reu: none", 10, 0
-s_mount: .byte "cannot mount root filesystem", 0
+s_mount: .byte "no breadbin disk", 10    ; (two lines: 40 columns)
+        .byte "put breadbin.d64 on drive 8", 0
 
 .segment "RODATA"
 s_init: .byte "/bin/init", 0

@@ -165,7 +165,7 @@ python3 tools/mkimage.py cat build/breadbin.d64 /home/readme
 
 ### Disks from Breadbin 0.4 and earlier
 
-Those use format 1 (magic `C64FS`, 32-byte inodes without times), which this kernel doesn't mount: as the boot disk it stops with "cannot mount root filesystem", and in drive 9–11 the disk shows up as a normal C64 disk holding only the boot file. Old kernels likewise refuse format 2 disks, because they check only the magic. Convert an old image on the computer you build on; the contents are kept, and every file gets the time of the conversion:
+Those use format 1 (magic `C64FS`, 32-byte inodes without times), which this kernel doesn't mount: as the boot disk it stops with "no breadbin disk", and in drive 9–11 the disk shows up as a normal C64 disk holding only the boot file. Old kernels likewise refuse format 2 disks, because they check only the magic. Convert an old image on the computer you build on; the contents are kept, and every file gets the time of the conversion:
 
 ```sh
 python3 tools/mkimage.py upgrade old.d64 new.d64 --boot build/breadbin.prg
