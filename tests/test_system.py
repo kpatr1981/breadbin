@@ -294,6 +294,24 @@ class Boot(unittest.TestCase):
         self.assertIn(" 12:0", self.run_("date"))
 
 
+class NoBootDisk(unittest.TestCase):
+    """The boot program loads, but drive 8 has no Breadbin file system on it
+    (#15): the panic says what is missing, in 40 columns."""
+
+    def test_says_where_the_disk_goes(self):
+        img = scratch("nofs.d64")
+        with open(IMAGE, "rb") as f:
+            data = bytearray(f.read())
+        data[376 * 256:376 * 256 + 5] = b"XXXXX"        # the superblock's magic
+        with open(img, "wb") as g:
+            g.write(data)
+        with Vice(img) as v:
+            s = v.wait_for("put breadbin.d64 on drive 8", timeout=120)
+        lines = s.splitlines()
+        self.assertIn("kernel panic: no breadbin disk", lines)
+        self.assertIn("put breadbin.d64 on drive 8", lines)
+
+
 class Persistence(unittest.TestCase):
     """Files written by Breadbin survive a reboot and are readable on the host."""
 
