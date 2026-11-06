@@ -34,6 +34,8 @@ does, `docs/programming.md` for the system calls and memory map, and
   The kernel must not grow at the expense of the program pool. Find room in RAM under the KERNAL ROM (`$E000-$FFFF`,
   reads need `$01=$35` with `sei`), by shrinking resident programs, or in the REU. After a kernel change, check `free` and that `as` still runs.
   Moving the kernel start means changing `KSTART` in `k.inc` and `KRAM` in `src/kernel.cfg` together.
+  Code and data used only while booting go in `.segment "INIT"`: it runs where it was loaded, in what becomes the pool,
+  and is never copied up. Its last step must jump back to resident code before anything takes pool pages (see `boot_run`).
 - **Drive I/O goes through `src/kernel/iec.s`,** Breadbin's own serial bus driver. Never use the KERNAL's
   OPEN/CHKIN/CHKOUT/CHRIN/CHROUT for drives: the MEGA65 Open ROMs get channel I/O wrong
   (CIOUT sends $00 after the first byte, TKSA corrupts the secondary address, OPEN sends EOI early).
