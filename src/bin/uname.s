@@ -20,4 +20,4 @@
         jmp print
 .segment "RODATA"
 sys: .byte "breadbin", 10, 0
-all: .byte "breadbin c64 0.5 6510 commodore-64", 10, 0
+all: .byte "breadbin c64 0.6 6510 commodore-64", 10, 0
