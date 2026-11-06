@@ -625,5 +625,24 @@ class Swap(unittest.TestCase):
             self.hogs(v, 2, 100, "/home")
             self.assertIn("out of memory", v.run("/test/memhog 1", timeout=120))
 
+
+class InodeAlloc(unittest.TestCase):
+    """New inodes are looked for after the last one handed out, and the
+    search wraps around (#4): a full table still fills to the last inode,
+    and one freed behind the search is found again."""
+
+    def test_fill_free_and_wrap(self):
+        with Vice(copy_image("inodes"), reu=True) as v:
+            v.wait_shell()
+            v.run("cd /tmp")
+            free = int(next(l for l in v.run("df").splitlines() if l.endswith("/tmp")).split()[3])
+            self.assertEqual(v.run("/test/mkfiles a", timeout=600), str(free))
+            self.assertEqual(v.run("/test/mkfiles b"), "0")           # full
+            v.run("rm a00")                                            # behind the search
+            self.assertEqual(v.run("/test/mkfiles c"), "1")
+            self.assertEqual(v.run("ls c00"), "c00")
+            self.assertEqual(v.run("fsck /tmp", timeout=300), "clean")
+
+
 if __name__ == "__main__":
     unittest.main()
