@@ -90,7 +90,7 @@ Two people work on this repo, each with their own Claude session. They share wha
 
 - One feature or fix per commit, with its tests. Message style: `feat: ...`, `fix: ...`, `test: ...`, `build: ...`, `docs: ...`,
   lower case, saying what changed for the user.
-- Work on a branch and open a pull request into the current release branch (`release-0.5`).
+- Work on a branch and open a pull request into the current release branch (`release-0.6`).
 
 ## Debugging
 
