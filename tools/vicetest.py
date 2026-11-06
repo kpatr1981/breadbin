@@ -56,12 +56,22 @@ def screen_to_text(codes):
     return "".join(out)
 
 
+def free_port():
+    """A TCP port nothing listens on now. (A port made from the pid could
+    collide: two suites side by side, 9 VICE, and a test drove another's.)"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 class Vice:
     def __init__(self, image, reu=False, port=None, warp=True, extra=()):
         self.image = image
-        self.port = port or (6510 + os.getpid() % 500)
+        self.port = port or free_port()
         args = [X64, "-default", "+sound", "-minimized",
                 "-remotemonitor", "-remotemonitoraddress", f"ip4://127.0.0.1:{self.port}"]
+        if not os.environ.get("BB_WINDOW"):   # BB_WINDOW=1: show VICE's window
+            args.append("-console")
         if warp:
             args.append("-warp")
         if reu:
