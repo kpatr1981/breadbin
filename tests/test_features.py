@@ -323,6 +323,18 @@ class Tools(unittest.TestCase):
         self.assertEqual(self.v.run("tail /etc/help").splitlines(), self.help[-10:])
         self.assertEqual(self.v.run("cat /etc/help | tail -2").splitlines(), self.help[-2:])
 
+    def test_tail_past_the_ring(self):
+        # inputs of 2 KB (the ring) and more: the ring wraps, at its exact size too
+        for name in ("lines300", "ring2048", "ring2049"):
+            with open(os.path.join(ROOT, "tests", "data", name + ".txt")) as f:
+                lines = f.read().splitlines()
+            for n in (1, 2, 10):
+                path = "/test/%s.txt" % name
+                self.assertEqual(self.v.run("tail -%d %s" % (n, path)).splitlines(), lines[-n:],
+                                 "tail -%d %s" % (n, path))
+            self.assertEqual(self.v.run("cat %s | tail -3" % path).splitlines(), lines[-3:])
+        self.assertEqual(self.v.run("echo still here"), "still here")
+
     def test_sort(self):
         want = sorted(self.help)
         self.assertEqual(self.v.run("sort /etc/help").splitlines(), want)

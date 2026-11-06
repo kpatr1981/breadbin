@@ -61,10 +61,13 @@ $(BUILD)/troot/test/%: $(BUILD)/tp/%.o $(LIBOBJ) src/prog.cfg tools/cx.py
 	ld65 -C src/prog.cfg -S 256 -o $(BUILD)/tp/$*.1 $< $(LIBOBJ)
 	python3 tools/cx.py $(BUILD)/tp/$*.0 $(BUILD)/tp/$*.1 $(BUILD)/tp/$*.lbl $@
 
-$(BUILD)/breadbin-test.d64: $(BUILD)/breadbin.d64 $(TCX)
+TDATA   := $(wildcard tests/data/*.txt)
+
+$(BUILD)/breadbin-test.d64: $(BUILD)/breadbin.d64 $(TCX) $(TDATA)
 	rm -rf $(BUILD)/troot.all
 	mkdir -p $(BUILD)/troot.all
 	cp -R $(BUILD)/root/. $(BUILD)/troot/. $(BUILD)/troot.all/
+	cp $(TDATA) $(BUILD)/troot.all/test/
 	python3 tools/mkimage.py build $@ --boot $(BUILD)/breadbin.prg --root $(BUILD)/troot.all --dev console:1 --dev null:0
 
 test-host:
