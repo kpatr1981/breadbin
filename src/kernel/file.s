@@ -9,6 +9,15 @@ FF_GONE = $80           ; f_flags: unlinked while open, freed at the last close
 .import s_dot, s_dotdot, sb_nblocks_lo, sb_nblocks_hi, bm_alloc, stamp_m
 .importzp bp
 
+.segment "ZEROPAGE"      ; often used: zero page makes each use a byte shorter
+rn_ino:  .res 1
+of_dev:  .res 1
+rn_od:   .res 1
+of_flags: .res 1
+of_ino:  .res 1
+pb_len:  .res 1
+rn_npi:  .res 1
+
 .segment "BSS"
 f_type:  .res NFILE
 f_ref:   .res NFILE
@@ -27,20 +36,13 @@ pi_n:    .res NPIPE
 pi_rd:   .res NPIPE     ; open read ends
 pi_wr:   .res NPIPE     ; open write ends
 con_file: .res 1
-of_flags: .res 1
 of_fd:   .res 1
-of_dev:  .res 1
-of_ino:  .res 1
 of_x:    .res 1
 ou_t:    .res 1
-rn_ino:  .res 1
 rn_type: .res 1
-rn_od:   .res 1
 rn_opi:  .res 1
-rn_npi:  .res 1
 rn_ex:   .res 1
 pbuf:    .res CWDLEN+16
-pb_len:  .res 1
 .export pbuf, build_path
 .import cbm_read, cbm_readdir, cbm_open_write, cbm_write, cbm_wclose
 .import cbm_scratch, cbm_rename, cbm_fsinfo

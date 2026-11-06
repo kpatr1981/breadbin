@@ -15,6 +15,17 @@ ia_next: .res NDEV      ; ialloc: where the next search starts (0: at 1)
 ia_from: .res 1
 .exportzp fb, pp
 
+.segment "ZEROPAGE"      ; often used: zero page makes each use a byte shorter
+bm_res:  .res 2
+dl_pos:  .res 2
+io_n:    .res 1
+bm_i:    .res 1
+ba_dev:  .res 1
+tr_i:    .res 1
+dl_free: .res 2
+io_w:    .res 1
+bm_idx:  .res 1
+
 .segment "BSS"
 ; per-device superblock info (dev 0 = disk, 1 = REU)
 sb_nblocks_lo: .res NDEV
@@ -54,20 +65,11 @@ f_cnt:   .res 2
 f_done:  .res 2
 f_buf = fb
 bm_alloc: .res 1
-bm_idx:  .res 1
-bm_res:  .res 2
-dl_pos:  .res 2
 dl_off:  .res 2
-dl_free: .res 2
 dl_ino:  .res 1
 ib_lo:   .res 1
 ib_hi:   .res 1
-io_n:    .res 1
-io_w:    .res 1
 cnt:     .res 2
-tr_i:    .res 1
-ba_dev:  .res 1
-bm_i:    .res 1
 
 .export bm_alloc, stamp_m
 .export sb_ok, fs_name2, nm_dev, nm_ino, dl_off, dl_ino, f_done, dir_put
