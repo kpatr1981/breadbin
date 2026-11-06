@@ -1,5 +1,6 @@
 ; tail [-n] [file]: the last n (10) lines. Keeps the last 2 KB of the input
-; in a ring, so lines further back than that are gone.
+; in a ring, so lines further back than that are gone. A file is read from
+; 2 KB before its end; a pipe all the way through.
 .include "../../include/breadbin.inc"
 .import argn, open_or_die, getc, set_input, parse_dec
 RING = 2048
@@ -39,6 +40,18 @@ first = $2e
         bcs @in
         ldy #O_RDONLY
         jsr open_or_die
+        pha                 ; a file over 2 KB: read only its last 2 KB
+        lda #<RING          ; (the seek fails on a smaller one: read it all)
+        sta r0
+        lda #>RING
+        sta r0+1
+        lda #0
+        sta r1
+        ldy #SEEK_END
+        pla
+        pha
+        jsr SYS_SEEK
+        pla
         jmp @go
 @in:    lda #0
 @go:    jsr set_input
