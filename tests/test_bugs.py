@@ -71,6 +71,20 @@ class Shell(unittest.TestCase):
         self.v._wait(lambda ls: any(l.endswith(" $") for l in ls[1:]), 60)
         self.assertEqual(self.ps_line("count") + self.ps_line("grep"), [])
 
+    def test_zombie_shows_no_memory(self):
+        # a finished background job its shell hasn't reaped gave its pages back
+        # (a script's shell reaps background jobs only when it ends)
+        self.run_('echo "uname > /dev/null &" > /home/z')
+        self.run_("echo sleep 2 >> /home/z")
+        self.run_("echo ps >> /home/z")
+        out = self.run_("sh /home/z")
+        self.run_("rm /home/z")
+        lines = [l for l in out.splitlines() if l.endswith("uname")]
+        self.assertEqual(len(lines), 1, out)
+        f = lines[0].split()
+        self.assertTrue(f[3].startswith("z"), lines)
+        self.assertEqual(f[4], "0", lines)
+
     def test_bg_reader_stops_again(self):
         pid = self.start_stopped("cat")
         self.run_("bg")
