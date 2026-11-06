@@ -157,6 +157,24 @@ class SmallRAMDisk(unittest.TestCase):
             self.assertEqual(tmp_inodes(v.run("df")), before)
 
 
+class SmallREUWithDriveCopy(unittest.TestCase):
+    """A 256 KB REU booted from a 1541: three banks keep the copy of drive 8 and
+    half the last one is the swap area, so /tmp is 128 blocks. Its inode table
+    is 16 blocks (63 inodes), not 64, or files would get only 61 blocks (#17)."""
+
+    def test_tmp_keeps_room_for_files(self):
+        with Vice(copy_image("reu256"), extra=["-reu", "-reusize", "256"]) as v:
+            v.wait_shell()
+            tmp = next(l for l in v.run("df").splitlines() if l.endswith("/tmp")).split()
+            self.assertEqual(tmp[:4], ["128", "19", "109", "62"], tmp)
+            v.run("cd /tmp")
+            v.run("cp /bin/as a")                # 23 blocks
+            out = v.run("cat a a a > b")         # 69 more: 111 of 128 in use
+            self.assertEqual(out, "")            # (64 inode blocks left only 61)
+            self.assertEqual(v.run("wc b"), v.run("cat a a a | wc").rstrip() + " b")
+            self.assertEqual(v.run("fsck /tmp", timeout=300), "clean")
+
+
 class BigGeoRAM(unittest.TestCase):
 
     def test_4mb_georam_is_64_banks(self):

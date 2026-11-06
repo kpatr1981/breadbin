@@ -1377,8 +1377,11 @@ nameiparent:
 .segment "INIT"         ; boot only (kernel.cfg)
 ; fs_mkfs_reu: format the REU (or GeoRAM) as c64fs: all of it, up to 128
 ; banks (32768 blocks), less what the drive 8 copy uses (rd_banks).
-; Superblock 0, bitmap 1..nbm, 64 inode blocks (255 inodes).
-RD_INOBLK = 64
+; Superblock 0, bitmap 1..nbm, then 64 inode blocks (255 inodes), or 16
+; (63 inodes) when the disk has fewer than 512 blocks: on a 256 KB REU,
+; /tmp is 128 blocks once the drive 8 copy and the swap area have theirs.
+rd_iblk: .byte 64       ; inode blocks
+rd_nino: .byte 255      ; inodes
 fs_mkfs_reu:
         lda #1
         sta ci_dev
@@ -1407,7 +1410,14 @@ fs_mkfs_reu:
         lda #0
         sta sb_bitmap_hi+1
         sta sb_istart_hi+1
-        lda #255
+        lda sb_nblocks_hi+1 ; a small disk: a smaller inode table
+        cmp #2
+        bcs @big
+        lda #16
+        sta rd_iblk
+        lda #64
+        sta rd_nino
+@big:   lda rd_nino
         sta sb_ninodes+1
         ; superblock
         lda #1
@@ -1430,7 +1440,7 @@ fs_mkfs_reu:
         lda sb_nblocks_hi+1
         sta (bp),y          ; nblocks hi
         iny
-        lda #255
+        lda rd_nino
         sta (bp),y          ; inodes
         iny
         lda #1              ; bitmap block 1
@@ -1445,7 +1455,7 @@ fs_mkfs_reu:
         lda #0
         sta (bp),y
         iny
-        lda #RD_INOBLK
+        lda rd_iblk
         sta (bp),y
         iny
         lda #ROOT_INO
@@ -1468,7 +1478,7 @@ fs_mkfs_reu:
         ; block 0: superblock, bitmap and inode blocks are in use
         lda sb_istart_lo+1
         clc
-        adc #RD_INOBLK
+        adc rd_iblk
         sta tr_i            ; that many blocks from 0
         lsr a
         lsr a
@@ -1545,7 +1555,7 @@ fs_mkfs_reu:
 @ibw:   jsr bwrite
         inc tr_i
         lda tr_i
-        cmp #RD_INOBLK
+        cmp rd_iblk
         bne @ib
         ; root directory
         lda #1
