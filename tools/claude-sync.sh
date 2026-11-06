@@ -3,7 +3,7 @@
 # Before every prompt: fetch, fast-forward the current branch, and tell Claude
 # what arrived. Claude Code reads CLAUDE.md only when a session starts, so a
 # changed CLAUDE.md is printed here in full. Never blocks: it always exits 0.
-BASE=release-0.4
+BASE=release-0.5
 
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 git rev-parse --git-dir >/dev/null 2>&1 || exit 0
