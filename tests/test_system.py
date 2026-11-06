@@ -1,5 +1,6 @@
 """End-to-end tests: boot Breadbin in VICE and drive the shell."""
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -39,6 +40,13 @@ class Boot(unittest.TestCase):
         s = self.v.screen()
         self.assertIn("breadbin 0.5", s)
         self.assertIn("kpatronas@gmail.com", s)
+
+    def test_01_pool_size(self):
+        # the boot code runs where it was loaded and isn't copied up, so the
+        # kernel starts at $8400: 124 pages for programs (0.5: 119)
+        m = re.search(r"memory: (\d+) pages free", self.v.screen())
+        self.assertIsNotNone(m, self.v.screen())
+        self.assertGreaterEqual(int(m.group(1)), 124)
 
     def test_02_echo(self):
         self.assertEqual(self.run_("echo hello world"), "hello world")

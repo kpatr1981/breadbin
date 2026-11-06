@@ -15,6 +15,7 @@ pa_run:      .res 1
 pa_start:    .res 1
 
 .segment "CODE"
+.segment "INIT"         ; boot only (kernel.cfg)
 mem_init:
         ldx #NPOOL-1
         lda #0
@@ -26,6 +27,7 @@ mem_init:
         sta total_pages
         rts
 
+.segment "CODE"
 ; page_alloc: Y = number of pages -> A = first page (carry clear),
 ; or carry set (A = ENOMEM). First fit.
 page_alloc:

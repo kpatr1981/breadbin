@@ -1,7 +1,7 @@
 ; Breadbin kernel internal definitions
 .include "../../include/breadbin.inc"
 
-KSTART  = $7F00     ; must match KRAM in kernel.cfg
+KSTART  = $8400     ; must match KRAM in kernel.cfg
 P_SAVE  = $E000     ; the process save areas: RAM under the KERNAL ROM
 P_CWD   = P_SAVE + MAXPROC*SAVESZ   ; working directory names, there too
 P_NAME  = P_CWD + MAXPROC*CWDLEN    ; process names, there too

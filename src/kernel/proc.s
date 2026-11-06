@@ -46,6 +46,7 @@ ep_snap:  .res 4        ; ep_get's copy of it
 s_init: .byte "init exited", 0
 
 .segment "CODE"
+.segment "INIT"         ; boot only (kernel.cfg)
 proc_init:
         ldx #MAXPROC-1
         lda #PS_FREE
@@ -56,6 +57,7 @@ proc_init:
         sta next_pid
         rts
 
+.segment "CODE"
 ; slot_save_ptr: X = slot -> p3 = &p_save[slot*192]. Preserves X. The save
 ; areas sit under the KERNAL ROM: switch it out (MAP_RAM, interrupts off)
 ; around every access.
