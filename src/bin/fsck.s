@@ -23,7 +23,10 @@ sb_at = $2e             ; superblock block, low byte (high: sb_ath): 376 or 0
 SB_DISK = 376
 
 .segment "CODE"
-start:  lda #0
+start:  lda #$ff             ; no inode block in cblk yet
+        sta cnum
+        lda #0
+        sta cdirty
         sta fix
         sta probs
         sta probs+1
@@ -95,7 +98,7 @@ start:  lda #0
         jmp SYS_EXIT
 
 ; ---- loading ----
-; load: stat the path, find the superblock, read the bitmap and inodes
+; load: stat the path, find the superblock, take its numbers
 load:   lda path
         sta r0
         lda path+1
@@ -156,27 +159,7 @@ load:   lda path
         lda #0
         rol a
         sta d81
-        ; inodes: the first 32 bytes of each (the times aren't checked)
-        lda #0
-        sta n
-@ib:    lda n
-        cmp niblk
-        bcs @done
-        jsr rd_iblk
-        bcs @ioerr
-        ldy #0
-@g:     lda ibuf,x
-        sta (ptr2),y
-        jsr ib_next
-        bne @g
-        inc n
-        bne @ib
-@done:  clc
-        rts
-@ioerr: ldx #0
-        ldy #0
-        jsr perr
-        sec
+        clc                 ; (inodes are read when needed: inoptr)
         rts
 
 ; read_sb: block sb_at -> sb; carry clear if it holds the c64fs magic
@@ -473,36 +456,82 @@ print_ino:
         ldx #0
         jmp print_dec
 
-; ino_dirty: the inode block of inode n changed
+; ino_dirty: the inode at ptr2 (the last inoptr) changed
 ino_dirty:
-        lda n
-        lsr a
-        lsr a
-        tax
         lda #1
-        sta ibdirty,x
+        sta cdirty
         rts
 
-; inoptr: X = inode -> ptr2 = &inodes[X * 32], n = X
+; inoptr: X = inode -> ptr2 = its 64 bytes, n = X. Inodes are read one
+; block (4 inodes) at a time into cblk, a changed block written back first,
+; instead of holding the whole table (8 KB). Keeps X and blk. Exits on a
+; read error.
 inoptr: stx n
         txa
         lsr a
         lsr a
+        cmp cnum
+        beq @have
+        sta cwant
+        lda blk             ; the caller's blk (walk writes dbuf back to it)
+        pha
+        lda blk+1
+        pha
+        jsr flush_ino
+        lda cwant
+        sta cnum
+        jsr cblk_at
+        lda #<cblk
+        ldx #>cblk
+        jsr rdblk
+        bcs ioerr
+        pla
+        sta blk+1
+        pla
+        sta blk
+@have:  lda n               ; + (n & 3) * 64
+        and #3
         lsr a
-        sta ptr2+1
-        txa
-        asl a
-        asl a
-        asl a
-        asl a
-        asl a
+        ror a
+        ror a
         clc
-        adc #<inodes
+        adc #<cblk
         sta ptr2
-        lda ptr2+1
-        adc #>inodes
+        lda #>cblk
+        adc #0
         sta ptr2+1
+        ldx n               ; (callers count on X = the inode)
         rts
+
+; flush_ino: write the inode block in cblk back if it changed
+flush_ino:
+        lda cdirty
+        beq @r
+        lda #0
+        sta cdirty
+        lda cnum
+        jsr cblk_at
+        lda #<cblk
+        ldx #>cblk
+        jsr wrblk
+        bcs ioerr
+@r:     rts
+
+; cblk_at: A = inode block -> blk
+cblk_at:
+        clc
+        adc istart
+        sta blk
+        lda istart+1
+        adc #0
+        sta blk+1
+        rts
+
+ioerr:  ldx #0
+        ldy #0
+        jsr perr
+        lda #1
+        jmp SYS_EXIT
 
 ; ---- blocks ----
 ; mark_used: the blocks (of this chunk) that must be marked used: the
@@ -895,71 +924,10 @@ check_bitmap:
 @ok:    clc
         rts
 
-; write_back: changed inode blocks, then sync
+; write_back: the changed inode block, then sync
 write_back:
-        lda #0
-        sta n
-@ib:    lda n
-        cmp niblk
-        bcs @bm
-        tax
-        lda ibdirty,x
-        beq @nx
-        jsr rd_iblk         ; the block as it is, so the times stay
-        bcs @nx
-        ldy #0
-@p:     lda (ptr2),y
-        sta ibuf,x
-        jsr ib_next
-        bne @p
-        lda #<ibuf
-        ldx #>ibuf
-        jsr wrblk
-@nx:    inc n
-        bne @ib
-@bm:    jmp SYS_SYNC
-
-; rd_iblk: inode block n -> ibuf; ptr2 = its 4 inodes in inodes (32 bytes
-; each), X = Y = 0 for ib_next
-rd_iblk:
-        lda n
-        clc
-        adc istart
-        sta blk
-        lda istart+1
-        adc #0
-        sta blk+1
-        lda n               ; ptr2 = inodes + n * 128
-        lsr a
-        tax
-        lda #0
-        ror a
-        clc
-        adc #<inodes
-        sta ptr2
-        txa
-        adc #>inodes
-        sta ptr2+1
-        lda #<ibuf
-        ldx #>ibuf
-        jsr rdblk
-        ldx #0
-        rts
-
-; ib_next: step X (ibuf, 64 per inode) and Y (inodes, 32 per inode)
-; over the first 32 bytes of each inode; Z set after the fourth
-ib_next:
-        inx
-        iny
-        tya
-        and #31
-        bne @r
-        txa
-        clc
-        adc #32
-        tax
-        cpy #128
-@r:     rts
+        jsr flush_ino
+        jmp SYS_SYNC
 
 ; problem: one more problem; ends its line
 problem:
@@ -1023,7 +991,9 @@ dt:      .res 1
 ds:      .res 1
 ft:      .res 1
 fs:      .res 1
-ibdirty: .res 64
+cnum:    .res 1         ; the inode block in cblk ($ff: none)
+cdirty:  .res 1
+cwant:   .res 1
 d81:     .res 1
 t8:      .res 2
 sb:      .res 256
@@ -1034,4 +1004,4 @@ seen:    .res 256
 queue:   .res 256
 dbuf:    .res 256
 ibuf:    .res 256
-inodes:  .res 32*256
+cblk:    .res 256       ; one inode block (inoptr)
