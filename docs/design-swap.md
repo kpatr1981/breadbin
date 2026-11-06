@@ -40,7 +40,7 @@ so in those cases swapping is off and a full pool means `ENOMEM`, as before.
 
 ## Costs and limits
 
-- Interrupts are off while pages move: up to about 2 jiffies for the biggest program (124 pages).
+- Interrupts are off while pages move: up to about 2 jiffies for the biggest program (125 pages).
 - Two ready processes that need the same pages take turns: each switch moves them both. That's slow,
   but they still both run, where before the second one got `ENOMEM`.
 - A process that is out and has been killed comes back before it exits.

@@ -30,7 +30,7 @@ does, `docs/programming.md` for the system calls and memory map, and
 
 ## Rules
 
-- **RAM is the scarce resource, not disk.** Programs need free pages to run (`as`, `edit`, `basic`, `fsck` each need 40-50 pages, of a 124-page pool).
+- **RAM is the scarce resource, not disk.** Programs need free pages to run (`as`, `edit`, `basic`, `fsck` each need 40-50 pages, of a 125-page pool).
   The kernel must not grow at the expense of the program pool. Find room in RAM under the KERNAL ROM (`$E000-$FFFF`,
   reads need `$01=$35` with `sei`), by shrinking resident programs, or in the REU. After a kernel change, check `free` and that `as` still runs.
   Moving the kernel start means changing `KSTART` in `k.inc` and `KRAM` in `src/kernel.cfg` together.
