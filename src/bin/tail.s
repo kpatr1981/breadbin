@@ -52,10 +52,10 @@ first = $2e
         bcs @end
         ldy #0
         sta (p),y
-        inc p
-        bne @rd
+        inc p               ; the end check runs on every byte: ring
+        bne @ck             ; isn't page-aligned, so its end needn't be
         inc p+1
-        lda p+1
+@ck:    lda p+1
         cmp #>(ring+RING)
         bne @rd
         lda p
@@ -195,21 +195,23 @@ setlen: lda avail
         sta len+1
         rts
 
+; qdec: q steps back one byte, from ring to the ring's last byte
 qdec:   lda q
+        cmp #<ring
         bne @d
-        dec q+1
-@d:     dec q
         lda q+1
         cmp #>ring
-        bne @r
-        lda q
-        cmp #<ring
-        bcs @r
+        bne @d
         lda #<(ring+RING-1)
         sta q
         lda #>(ring+RING-1)
         sta q+1
-@r:     rts
+        rts
+@d:     lda q
+        bne @l
+        dec q+1
+@l:     dec q
+        rts
 qinc:   inc q
         bne @c
         inc q+1
