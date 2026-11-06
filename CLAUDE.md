@@ -36,6 +36,11 @@ does, `docs/programming.md` for the system calls and memory map, and
   Moving the kernel start means changing `KSTART` in `k.inc` and `KRAM` in `src/kernel.cfg` together.
   Code and data used only while booting go in `.segment "INIT"`: it runs where it was loaded, in what becomes the pool,
   and is never copied up. Its last step must jump back to resident code before anything takes pool pages (see `boot_run`).
+  Kernel code that runs with interrupts off and calls no KERNAL routine can live under the ROM too (`HICODE`/`HIBSS`,
+  copied at boot, called with `$01=MAP_RAM`; see `swap.s`).
+- **Swapping** (`docs/design-swap.md`): with an REU, a process that isn't running may have its pages in the REU. So the
+  kernel writes only into the running process's memory, never into a blocked one's (pipes and the console copy from the
+  reader's own system call), and anything that frees `p_mpage` must be the running process.
 - **Drive I/O goes through `src/kernel/iec.s`,** Breadbin's own serial bus driver. Never use the KERNAL's
   OPEN/CHKIN/CHKOUT/CHRIN/CHROUT for drives: the MEGA65 Open ROMs get channel I/O wrong
   (CIOUT sends $00 after the first byte, TKSA corrupts the secondary address, OPEN sends EOI early).
