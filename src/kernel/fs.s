@@ -11,6 +11,8 @@
 .segment "ZEROPAGE"
 fb:     .res 2          ; caller buffer pointer for fs_read/fs_write
 pp:     .res 2          ; path pointer for namei
+ia_next: .res NDEV      ; ialloc: where the next search starts (0: at 1)
+ia_from: .res 1
 .exportzp fb, pp
 
 .segment "BSS"
@@ -410,11 +412,21 @@ ino_off:
         tay
         rts
 
-; ialloc: A = dev, X = type -> A = new inode number, ci = that inode
+; ialloc: A = dev, X = type -> A = new inode number, ci = that inode.
+; The search starts after the last inode handed out on that dev (ia_next)
+; and wraps to 1, so it reads only a block or two per new file instead of
+; every inode block from the start (#4). Any start finds a free inode if
+; there is one, so freeing and mounting need not touch ia_next.
 ialloc:
         sta ba_dev
         stx tmp2
-        ldx #1
+        tay
+        ldx ia_next,y
+        txa
+        cmp sb_ninodes,y
+        bcc @from
+        ldx #1              ; (0, or past this disk's table)
+@from:  stx ia_from
 @l:     stx tr_i
         lda ba_dev
         jsr iget
@@ -426,8 +438,11 @@ ialloc:
         txa
         ldy ba_dev
         cmp sb_ninodes,y
-        bcc @l
-        lda #ENOSPC
+        bcc @in
+        ldx #1              ; past the end: on from inode 1
+@in:    cpx ia_from
+        bne @l
+        lda #ENOSPC         ; all the way round: none free
         sec
 @r:     rts
 @got:   ldx #INO_SIZE-1
@@ -442,6 +457,11 @@ ialloc:
         jsr stamp_m
         jsr iput
         bcs @r
+        ldy ci_dev
+        ldx ci_ino
+        inx
+        txa
+        sta ia_next,y       ; the next search starts after this one
         lda ci_ino
         clc
         rts
