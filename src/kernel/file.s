@@ -835,7 +835,7 @@ sys_pipe:
         rts
 @got:   sty sb5
         ldy #1
-        jsr page_alloc
+        jsr alloc_pages     ; (moves others to the REU if need be)
         bcs @r
         ldy sb5
         sta pi_page,y

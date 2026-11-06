@@ -34,6 +34,7 @@ PS_STOPPED = 4
 ; p_flags beyond the spawn flags (SP_BG, SP_IGNINT)
 PF_STOPREP = $20    ; stop already reported by wait
 PF_STOP    = $40    ; stop pending (CTRL-Z, SIGTSTP, SIGSTOP)
+PF_OUT     = $80    ; its pages are in the REU swap area (swap.s)
 
 ; wait channels
 CH_KEY   = $01      ; woken by the IRQ while keys are waiting (console)
@@ -120,6 +121,8 @@ ST     = $90
 .global next_pid, proc_init, slot_save_ptr, check_signal
 ; mem.s
 .global page_alloc, page_free, mem_init, sys_meminfo, free_pages, total_pages
+; swap.s
+.global in_core, alloc_pages, sw_on, sw_bank
 ; blk.s
 .global blk_init, bread, bdirty, bflush_all, buf_ptr, reu_banks, ram_type, dev_present
 .global iec_open, iec_close, ts_block, iec_command, cur_dev_set, dev_drive, dev_type

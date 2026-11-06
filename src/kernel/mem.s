@@ -4,6 +4,7 @@
 POOL_FIRST = $08
 POOL_END   = >KSTART                ; first page owned by the kernel
 NPOOL      = POOL_END - POOL_FIRST
+.export pg_used, pa_n
 
 
 .segment "BSS"

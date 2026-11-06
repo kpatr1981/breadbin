@@ -95,7 +95,16 @@ fs_mount:
         bcs @r
         lda dev_present+1
         beq @ok
-        jsr fs_mkfs_reu
+        lda ram_type        ; an REU (not a GeoRAM): the upper half of /tmp's
+        cmp #1              ; last bank becomes the swap area (swap.s)
+        bne @mk
+        ldx rd_banks
+        beq @mk
+        dex
+        stx sw_bank
+        lda #1
+        sta sw_on
+@mk:    jsr fs_mkfs_reu
         bcs @ok
         lda #1
         ldx #0
@@ -1352,9 +1361,14 @@ fs_mkfs_reu:
         lda #1
         sta ci_dev
         sta ba_dev
-        lda rd_banks
+        lda rd_banks        ; blocks: rd_banks*256, less 128 for the swap area
+        sec
+        sbc sw_on
         sta sb_nblocks_hi+1
+        lda sw_on
+        lsr a
         lda #0
+        ror a
         sta sb_nblocks_lo+1
         lda rd_banks       ; bitmap blocks: banks / 8, rounded up
         clc
@@ -1388,10 +1402,10 @@ fs_mkfs_reu:
         lda #C64FS_VERSION
         sta (bp),y
         iny
-        lda #0
+        lda sb_nblocks_lo+1
         sta (bp),y          ; nblocks lo
         iny
-        lda rd_banks
+        lda sb_nblocks_hi+1
         sta (bp),y          ; nblocks hi
         iny
         lda #255
@@ -1465,14 +1479,20 @@ fs_mkfs_reu:
         inx
         cpx sb_nbm+1
         bne @bw
-        lda rd_banks
+        lda sb_nblocks_lo+1 ; the first byte past the end: (nblocks mod 2048) / 8
+        lsr a
+        lsr a
+        lsr a
+        sta tr_i
+        lda sb_nblocks_hi+1
         and #7
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a
+        ora tr_i
         beq @bw
-        asl a
-        asl a
-        asl a
-        asl a
-        asl a
         tay
         lda #$ff
 @pe:    sta (bp),y
@@ -1483,8 +1503,9 @@ fs_mkfs_reu:
         inc bm_i
         lda bm_i
         cmp sb_nbm+1
-        bcc @bm
-        ; inode blocks (inode 0 is reserved)
+        bcs @bmd
+        jmp @bm
+@bmd:   ; inode blocks (inode 0 is reserved)
         lda #0
         sta tr_i
 @ib:    lda sb_istart_lo+1

@@ -126,7 +126,7 @@ While the disk is busy, every other process waits: the bus transfer can't be int
 
 ## The RAM disk (`/tmp`)
 
-With a RAM Expansion Unit, or a GeoRAM when there is no REU, the kernel formats it as c64fs at every boot and mounts it at `/tmp`. The layout is the same idea with different block numbers: superblock at block 0, the bitmap from block 1 (one bitmap block per 2048 blocks, that is per 8 banks of 64 KB), then 64 inode blocks (255 inodes). Its size is that of the REU, up to 128 banks (32768 blocks, 8 MB), less the three banks that keep the copy of drive 8 when the REU has four or more. It is fast, and it is **empty after every reboot**. Without an REU, `/tmp` is an ordinary directory on the boot disk.
+With a RAM Expansion Unit, or a GeoRAM when there is no REU, the kernel formats it as c64fs at every boot and mounts it at `/tmp`. The layout is the same idea with different block numbers: superblock at block 0, the bitmap from block 1 (one bitmap block per 2048 blocks, that is per 8 banks of 64 KB), then 64 inode blocks (255 inodes). Its size is that of the REU, up to 128 banks (32768 blocks, 8 MB), less the three banks that keep the copy of drive 8 when the REU has four or more, and, on an REU (not a GeoRAM), less the 128 blocks at the top that are the swap area ([design-swap.md](design-swap.md)). It is fast, and it is **empty after every reboot**. Without an REU, `/tmp` is an ordinary directory on the boot disk.
 
 ## Normal C64 disks (CBM DOS)
 
