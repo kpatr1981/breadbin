@@ -486,6 +486,9 @@ proc_exit:
         lda p_mpage,x
         ldy p_mlen,x
         jsr page_free
+        ldx cur             ; a zombie holds no pages: ps shows 0
+        lda #0
+        sta p_mlen,x
         ; reparent children to init (slot of pid 1)
         jsr find_init
         stx tmp2
