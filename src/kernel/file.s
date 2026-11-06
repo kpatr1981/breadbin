@@ -46,6 +46,7 @@ pb_len:  .res 1
 .import cbm_scratch, cbm_rename, cbm_fsinfo
 
 .segment "CODE"
+.segment "INIT"         ; boot only (kernel.cfg)
 file_init:
         ldx #NFILE-1
         lda #FT_FREE
@@ -67,6 +68,7 @@ file_init:
         sta f_ref,x
         rts
 
+.segment "CODE"
 ; oft_alloc -> X = free entry (ref 1, pos 0), carry set if table full
 oft_alloc:
         ldx #NFILE-1

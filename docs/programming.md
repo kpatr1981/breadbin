@@ -67,8 +67,8 @@ hello, world! (assembled on a c64)
 | `$0030–$003F` | used by the user library (`lp1` `$30`, `lp2` `$32`, `lp3` `$34`, scratch `$36–$39`, `dec_str`'s digits `$3A–$3F`); free if you don't call it |
 | `$0040–$00FF` | kernel: don't touch |
 | `$0100–$01FF` | the stack, shared by all processes: you get up to about 130 bytes of it |
-| `$0800–$7EFF` | the user pool: your program is loaded somewhere in here |
-| `$7F00–$CEFF` | the kernel |
+| `$0800–$83FF` | the user pool: your program is loaded somewhere in here |
+| `$8400–$CEFF` | the kernel |
 | `$CF00–$CFFF` | the system call jump table |
 | `$D000–$DFFF` | I/O |
 | `$E000–$FFFF` | KERNAL ROM (the kernel uses parts of it; programs shouldn't) |
@@ -291,7 +291,7 @@ Most classic text tools (`rev`, `tr`, `uniq`, `nl`, `tee`, `cut`, `tail`, `sort`
 2. **Read bytes with `getc`**, which buffers 256 bytes per system call. Calling `SYS_READ` for every byte is slow.
 3. **Write with `putc`/`print`.** Each call is a system call, so for large output collect a line in a buffer and `SYS_WRITE` it at once.
 4. **Errors go to fd 2** via `perr`. Exit 0 on success and 1 on error.
-5. **Size buffers in BSS.** Every page you reserve is memory another process can't have. The pool is 30 KB for everything that is running.
+5. **Size buffers in BSS.** Every page you reserve is memory another process can't have. The pool is 31 KB for everything that is running.
 6. **Stay small on the stack.** Use BSS for anything bigger than a few bytes.
 
 [`docs/examples/rev.s`](examples/rev.s) is a complete port of `rev`: about 60 lines, and 1.4 KB as an executable. Copy it to `src/bin/rev.s`, run `make`, and:
@@ -315,7 +315,7 @@ Things that need more thought on a C64:
 | | |
 |---|---|
 | Processes | 12 (init, login and the shell use 3) |
-| Memory for programs | 30 KB pool, in 256-byte pages |
+| Memory for programs | 31 KB pool, in 256-byte pages |
 | Stack per process | about 130 bytes |
 | Open files | 8 per process, 24 in total |
 | Pipes | 4, 256 bytes each |

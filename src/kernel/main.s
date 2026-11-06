@@ -77,7 +77,7 @@ stub_copy:                  ; copy X pages ($fb) -> ($fd)
         rts
 
 ; ---------------------------------------------------------------------
-.segment "RODATA"
+.segment "INIT"
 banner: .byte "breadbin 0.5", 10
         .byte "unix-like os by kpatronas@gmail.com", 10, 0
 s_mem:  .byte "memory: ", 0
@@ -86,12 +86,16 @@ s_reu:  .byte "reu: ", 0
 s_geo:  .byte "georam: ", 0
 s_reuk: .byte " x 64k", 10, 0
 s_noreu: .byte "reu: none", 10, 0
+s_mount: .byte "cannot mount root filesystem", 0
+
+.segment "RODATA"
 s_init: .byte "/bin/init", 0
 s_noinit: .byte "cannot start /bin/init", 0
 s_panic: .byte 10, "kernel panic: ", 0
-s_mount: .byte "cannot mount root filesystem", 0
 
-.segment "CODE"
+; kmain: the boot. It runs where the loader put it, in what becomes the
+; program pool, and ends in boot_run, which is part of the kernel proper.
+.segment "INIT"
 kmain:
         ldx #$ff
         txs
@@ -208,7 +212,12 @@ kmain:
         lda #<s_mount
         ldx #>s_mount
         jmp panic
-@ok:
+@ok:    jmp boot_run
+
+; boot_run: start /bin/init and the scheduler. Loading init takes pool
+; pages, which may be the ones the boot code ran from.
+.segment "CODE"
+boot_run:
         lda #<s_init
         ldx #>s_init
         jsr spawn_kernel

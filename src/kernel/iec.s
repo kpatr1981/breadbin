@@ -35,6 +35,7 @@ ie_st:   .res 1
 ie_x:    .res 1
 
 .segment "CODE"
+.segment "INIT"         ; boot only (kernel.cfg)
 iec_init:
         lda #$02            ; timer B must never raise an NMI
         sta CIA2_ICR
@@ -44,6 +45,7 @@ iec_init:
         sta ie_st
         rts
 
+.segment "CODE"
 ; ---- public ----
 ieclisten:
         sty ie_sa

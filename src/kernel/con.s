@@ -26,6 +26,7 @@ raw_pid: .res 1
 dec_buf: .res 6
 
 .segment "CODE"
+.segment "INIT"         ; boot only (kernel.cfg)
 con_init:
         lda #13             ; light green text
         sta $0286
@@ -45,6 +46,7 @@ con_init:
         sta $028a           ; key repeat for all keys
         rts
 
+.segment "CODE"
 ; ---- cursor ----
 cursor_hide:
         lda cur_vis

@@ -98,6 +98,7 @@ trk_hi: .hibytes 0,21,42,63,84,105,126,147,168,189,210,231,252,273,294,315,336,3
 dev_drive: .byte 8, 0, 9, 10, 11
 
 .segment "CODE"
+.segment "INIT"         ; boot only (kernel.cfg)
 blk_init:
         ldx #NBUF-1
         lda #0
@@ -133,6 +134,7 @@ blk_init:
         sta dc_base
         inc dc_on
         rts
+.segment "CODE"
 
 ; is_reu: A = dev -> Z set if its blocks live in the REU
 is_reu: cmp #1
@@ -1123,6 +1125,7 @@ reu_write:
         clc
         rts
 
+.segment "INIT"         ; boot only (kernel.cfg)
 ; transfer 1 byte (reu_tmp) to/from REU bank A offset 0; Y = command
 reu_byte:
         sta REU_BANK
@@ -1264,6 +1267,7 @@ geo_detect:
         jmp ram_found
 @none:  rts
 
+.segment "CODE"
 geo_sel:                    ; rq_hi:rq_lo -> GEO_BLK = block>>6, GEO_PAGE
         lda rq_lo
         and #$3f

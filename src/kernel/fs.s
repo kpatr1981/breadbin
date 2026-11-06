@@ -78,11 +78,14 @@ bm_i:    .res 1
 fs_magic: .byte C64FS_MAGIC
 s_dot:  .byte ".", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 s_dotdot: .byte "..", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.segment "INIT"         ; fs_mount's, boot only
 s_tmp:  .byte "tmp", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 s_tmpp: .byte "/tmp", 0
+.segment "RODATA"
 
 .segment "CODE"
 ; ---------------------------------------------------------------------
+.segment "INIT"         ; boot only (kernel.cfg)
 ; fs_mount: mount dev 0 (and the REU RAM disk at /tmp if present)
 fs_mount:
         lda #0
@@ -127,6 +130,7 @@ fs_mount:
 @ok:    clc
 @r:     rts
 
+.segment "CODE"
 ; mnt_point: A = dev, X = ino -> X = mount entry, carry clear if mounted on
 mnt_point:
         sta tmp0
@@ -1339,6 +1343,7 @@ nameiparent:
 @r:     rts
 
 ; ---------------------------------------------------------------------
+.segment "INIT"         ; boot only (kernel.cfg)
 ; fs_mkfs_reu: format the REU (or GeoRAM) as c64fs: all of it, up to 128
 ; banks (32768 blocks), less what the drive 8 copy uses (rd_banks).
 ; Superblock 0, bitmap 1..nbm, 64 inode blocks (255 inodes).
