@@ -579,6 +579,18 @@ class Edit(unittest.TestCase):
         self.until(lambda s: s[10] == "" and "*" in s[24] and not s[24].endswith("*"))
         self.quit()
 
+    def test_ctrl_l_redraws_everything(self):
+        # what a background job might print over the screen: gone after ^L
+        self.open("lines")
+        self.v._cmd("> 0428 2a")                        # over "two" (row 1)
+        self.v._cmd("> 0590 2a")                        # an empty row (10)
+        self.v._cmd("> 07e6 2a")                        # the status line's end
+        self.v._cmd("x")
+        self.keys(0x0C)                                 # ^L
+        s = self.until(lambda s: s[1] == "two" and s[10] == "" and not s[24].endswith("*"))
+        self.assertEqual(s[:4], ["one", "two", "three", "four"])
+        self.quit()
+
     def test_a_file_over_8_kb_is_refused(self):
         self.v.type("clear\nedit /home/big; echo $?\n")
         s = self.until(lambda s: s[2] == "1" or "edit:" in s[24])   # (or it opened)
