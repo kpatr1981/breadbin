@@ -18,17 +18,19 @@
 .export cbm_write, cbm_wclose, cbm_scratch, cbm_rename, cbm_fsinfo
 .export sys_mount, sys_umount, sys_mntinfo, sys_diskio
 
+.segment "ZEROPAGE"      ; often used: zero page makes each use a byte shorter
+cb_n:    .res 2         ; bytes copied
+mo_dev:  .res 1
+
 .segment "BSS"
 cb_t:    .res 1
 cb_s:    .res 1
 cb_k:    .res 1
 cb_e:    .res 1
-cb_n:    .res 2         ; bytes copied
 cb_lim:  .res 1         ; last valid offset + 1 in this sector (0 = 256)
 cb_cnt:  .res 1
 nbuf:    .res 16
 w_busy:  .res NDEV
-mo_dev:  .res 1
 mo_pdev: .res 1
 mo_pino: .res 1
 mo_ent:  .res 1

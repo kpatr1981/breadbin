@@ -6,9 +6,12 @@
 
 LBMAX = 79
 
+.segment "ZEROPAGE"      ; often used: zero page makes each use a byte shorter
+lb_len:  .res 1
+esc_st:  .res 1         ; escape sequence state
+
 .segment "BSS"
 lb:      .res LBMAX+1   ; line buffer
-lb_len:  .res 1
 lb_rpos: .res 1
 lb_ready: .res 1
 cur_vis: .res 1         ; cursor currently drawn
@@ -17,7 +20,6 @@ cur_t:   .res 1
 cur_save: .res 1
 con_busy: .res 1        ; output in progress: the IRQ must not blink
 con_eof: .res 1
-esc_st:  .res 1         ; escape sequence state
 esc_row: .res 1
 con_raw: .res 1         ; 1 = raw keys (no echo, no line editing)
 raw_pid: .res 1

@@ -11,25 +11,27 @@
 
 MAXARGS = 16
 
-.segment "BSS"
-sp_in:    .res 1        ; open-file entries for child fd 0/1/2
-sp_out:   .res 1
-sp_err:   .res 1
-sp_flags: .res 1
-sp_slot:  .res 1
-sp_pgrp:  .res 1        ; SP_JOB: the job to join (0 = start a new one)
-hdr:      .res 9
+.segment "ZEROPAGE"      ; often used: zero page makes each use a byte shorter
 img_sz:   .res 2
 bss_sz:   .res 2
 nrel:     .res 2
 argsz:    .res 2
 nargs:    .res 1
+dst:      .res 2
+sp_slot:  .res 1
+
+.segment "BSS"
+sp_in:    .res 1        ; open-file entries for child fd 0/1/2
+sp_out:   .res 1
+sp_err:   .res 1
+sp_flags: .res 1
+sp_pgrp:  .res 1        ; SP_JOB: the job to join (0 = start a new one)
+hdr:      .res 9
 base:     .res 1        ; first page
 npages:   .res 1
 rbuf:     .res 128
 rcnt:     .res 1
 kargv:    .res 4        ; argv for kernel spawn: {path, NULL}
-dst:      .res 2
 
 .segment "CODE"
 ; spawn_kernel: A/X = path (kernel memory). Starts init with console fds.
