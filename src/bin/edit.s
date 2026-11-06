@@ -2,7 +2,7 @@
 ;
 ;   cursor keys move, HOME = start of line, DEL = backspace, RETURN = new line
 ;   ^O or F1  save          ^X or F7  quit (twice if there are unsaved changes)
-;   ^K        delete line
+;   ^K        delete line         ^L or CLR  redraw the screen
 ;
 ; The screen is driven through the console: raw key mode (conmode) and
 ; the ESC = / ESC K / ESC R escapes. Rows 0-23 show text (39 columns),
@@ -92,6 +92,8 @@ main:   jsr getkey
         beq @del
         cmp #$0b            ; ^K
         beq @kill
+        cmp #K_CLR          ; ^L or CLR: redraw it all (after a background
+        beq @full           ; job printed over the screen)
         cmp #K_RET
         beq @ins
         cmp #$20
@@ -135,6 +137,9 @@ main:   jsr getkey
 @dok:   jsr cur_dec
         jsr delete
         jmp @edited
+@full:  lda #$ff             ; the status line too
+        sta st_shown
+        bne @edited
 @kill:  jsr kill_line
 @edited:
         inc need
