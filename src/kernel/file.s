@@ -421,7 +421,7 @@ sys_open:
 @inst:  jmp fd_install
 
 ; isatty(A = fd): carry clear if fd is the console
-.export sys_isatty, sys_utime
+.export sys_isatty, sys_utime, sys_seek
 sys_isatty:
         jsr fd_get
         bcs @r
@@ -581,6 +581,60 @@ sys_read:
         jsr fs_read
         bcs @r
         jmp file_done
+
+; seek(A = fd, r0 + r1 lo = offset (24 bits), Y = SEEK_SET: from the start,
+; SEEK_END: that many bytes back from the end) -> r0 + r1 lo = the new
+; position. EINVAL past either end, or on anything but a c64fs file.
+sys_seek:
+        sty sb5
+        jsr fd_get
+        bcs @r
+        stx sb6
+        lda f_type,x
+        cmp #FT_FILE
+        bne @inv
+        ldy f_dev,x
+        lda dev_type,y
+        bne @inv            ; a CBM disk
+        jsr file_setup      ; ci = its inode
+        bcs @r
+        lda #0
+        sta r1+1
+        lda sb5
+        beq @set
+        cmp #SEEK_END
+        bne @inv
+        sec                 ; size - offset
+        lda ci+I_SIZE
+        sbc r0
+        sta r0
+        lda ci+I_SIZE+1
+        sbc r0+1
+        sta r0+1
+        lda ci+I_SIZE+2
+        sbc r1
+        sta r1
+        bcs @st
+        bcc @inv
+@set:   lda ci+I_SIZE       ; offset <= size
+        cmp r0
+        lda ci+I_SIZE+1
+        sbc r0+1
+        lda ci+I_SIZE+2
+        sbc r1
+        bcc @inv
+@st:    ldx sb6
+        lda r0
+        sta f_pos0,x
+        lda r0+1
+        sta f_pos1,x
+        lda r1
+        sta f_pos2,x
+        clc
+@r:     rts
+@inv:   lda #EINVAL
+        sec
+        rts
 
 ; file_setup: X = entry -> ci loaded, f_off = pos, fb = r0, f_cnt = r1
 file_setup:

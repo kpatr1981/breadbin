@@ -336,6 +336,12 @@ class Tools(unittest.TestCase):
             self.assertEqual(self.v.run("cat %s | tail -3" % path).splitlines(), lines[-3:])
         self.assertEqual(self.v.run("echo still here"), "still here")
 
+    def test_seek(self):
+        self.v.run("echo abcdefghijklmnop > /home/s")     # 17 bytes with the newline
+        self.assertEqual(self.v.run("/test/seek /home/s").splitlines(),
+                         ["fgh", "13", "nop", "einval", "einval"])
+        self.v.run("rm /home/s")
+
     def test_sort(self):
         want = sorted(self.help)
         self.assertEqual(self.v.run("sort /etc/help").splitlines(), want)
