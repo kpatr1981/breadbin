@@ -43,10 +43,10 @@ class Boot(unittest.TestCase):
 
     def test_01_pool_size(self):
         # the boot code runs where it was loaded and isn't copied up, so the
-        # kernel starts at $8400: 124 pages for programs (0.5: 119)
+        # kernel starts at $8500: 125 pages for programs (0.5: 119)
         m = re.search(r"memory: (\d+) pages free", self.v.screen())
         self.assertIsNotNone(m, self.v.screen())
-        self.assertGreaterEqual(int(m.group(1)), 124)
+        self.assertGreaterEqual(int(m.group(1)), 125)
 
     def test_02_echo(self):
         self.assertEqual(self.run_("echo hello world"), "hello world")

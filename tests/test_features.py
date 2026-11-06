@@ -613,7 +613,7 @@ class Edit(unittest.TestCase):
 class Swap(unittest.TestCase):
     """With an REU, processes that aren't running go to the REU when the
     pool runs out: four 41-page memhogs at once (186 pages with sh and init,
-    in a 124-page pool) all keep their memory."""
+    in a 125-page pool) all keep their memory."""
 
     def hogs(self, v, n, rounds, out):
         for i in range(1, n + 1):
