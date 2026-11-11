@@ -7,7 +7,7 @@ system: ps kill jobs fg bg free df
         sleep clear theme
 users:  login whoami passwd
 code:   basic as
-disks:  mount umount format
+disks:  mount umount format fsck sync
 shell:  a | b  > f  >> f  < f  cmd &
         a ; b  *.bas  cd  exit
 keys:   | is shift + - (vice: | key)
