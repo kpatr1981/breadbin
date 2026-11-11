@@ -56,6 +56,30 @@ def screen_to_text(codes):
     return "".join(out)
 
 
+PROMPT = re.compile(r"^\S+ \$$")
+
+
+def command_output(lines, command):
+    """The output of `command` on a screen (40-column rows, right-stripped):
+    the rows between the last row the command line ends on and the next
+    prompt, or None while that prompt hasn't appeared. A command line longer
+    than a row wraps onto the next ones, so rows are joined, padded back to
+    40 columns, before matching."""
+    want = "$ " + command.strip()
+    for end in range(len(lines) - 1, -1, -1):
+        for n in range(1, len(want) // 40 + 3):
+            start = end - n + 1
+            if start < 0:
+                break
+            text = "".join(l.ljust(40) for l in lines[start:end]) + lines[end]
+            if text.endswith(want):
+                for j in range(end + 1, len(lines)):
+                    if PROMPT.match(lines[j]):
+                        return lines[end + 1:j]
+                return None
+    return None
+
+
 def free_port():
     """A TCP port nothing listens on now. (A port made from the pid could
     collide: two suites side by side, 9 VICE, and a test drove another's.)"""
@@ -204,11 +228,11 @@ class Vice:
         self._on_timeout()
         raise TimeoutError(f"{text!r} not on screen:\n{self.screen()}")
 
-    PROMPT = re.compile(r"^\S+ \$$")
+    PROMPT = PROMPT
 
     def run(self, command, timeout=90, clear=True):
         """Run a command line and return its output (the lines between the
-        command and the next prompt). Commands must fit on one screen line."""
+        command and the next prompt). A command line may wrap past 40 columns."""
         if clear:
             self.type("clear\n")
             # job notices ("[5] done") may print above the prompt
@@ -219,22 +243,14 @@ class Vice:
                         and not any(ls[ls.index(body[-1]) + 1:]))
             self._wait(cleared, timeout)
         self.type(command + "\n")
-        want = "$ " + command.strip()
         result = []
 
         def done(lines):
-            idx = None
-            for i in range(len(lines) - 1, -1, -1):
-                if lines[i].endswith(want):
-                    idx = i
-                    break
-            if idx is None:
+            out = command_output(lines, command)
+            if out is None:
                 return False
-            for j in range(idx + 1, len(lines)):
-                if self.PROMPT.match(lines[j]):
-                    result[:] = lines[idx + 1:j]
-                    return True
-            return False
+            result[:] = out
+            return True
         self._wait(done, timeout, what=command)
         return "\n".join(result)
 
