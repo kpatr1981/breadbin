@@ -38,7 +38,7 @@ class Boot(unittest.TestCase):
 
     def test_01_banner(self):
         s = self.v.screen()
-        self.assertIn("breadbin 0.6", s)
+        self.assertIn("breadbin 0.7", s)
         self.assertIn("kpatronas@gmail.com", s)
 
     def test_01_pool_size(self):
@@ -197,7 +197,7 @@ class Boot(unittest.TestCase):
         self.assertTrue(self.run_("uptime").startswith("up "))
         self.run_("date 13:45:10")
         self.assertIn(" 13:4", self.run_("date"))
-        self.assertEqual(self.run_("version"), "breadbin 0.6 by kpatronas@gmail.com")
+        self.assertEqual(self.run_("version"), "breadbin 0.7 by kpatronas@gmail.com")
         size = os.path.getsize(os.path.join(ROOT, "rootfs", "etc", "motd"))
         self.assertIn("size: %d" % size, self.run_("stat /etc/motd"))
         self.assertIn("0000: 77 65 6c 63", self.run_("hexdump /etc/motd | head -1"))
