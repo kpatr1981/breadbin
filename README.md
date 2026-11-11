@@ -77,12 +77,12 @@ Or attach `build/breadbin.d64` to drive 8 yourself and type `LOAD"*",8,1` and th
 
 ### Real hardware
 
-Breadbin has only been tested in VICE so far. On a real machine it should work the same way, with one requirement: the disk is a hybrid (see [How it works](#how-it-works)), and the kernel reads and writes it as raw sectors with the 1541's `U1`, `U2` and `B-P` commands. So it needs a drive that understands them, either a real one or a full 1541 emulation, and the disk must be writable.
+Breadbin is tested in VICE, and a contributor runs it on an Ultimate 64 and an Ultimate 64-II with their 1541 emulation ([#4](https://github.com/kpatr1981/breadbin/issues/4)). Other hardware should work the same way, with one requirement: the disk is a hybrid (see [How it works](#how-it-works)), and the kernel reads and writes it as raw sectors with the 1541's `U1`, `U2` and `B-P` commands. So it needs a drive that understands them, either a real one or a full 1541 emulation, and the disk must be writable.
 
 | Setup | Status | How |
 |-------|--------|-----|
 | Real 1541 or 1571 | should work | Write the image to a floppy: from a PC with a ZoomFloppy or XUM1541 and OpenCBM (`d64copy build/breadbin.d64 8`), or on the C64 with a copier such as DraCopy. |
-| Ultimate 64, 1541 Ultimate-II+ | should work | Mount `breadbin.d64` on drive 8. Its REU (512 KB or more) gives you `/tmp`. Writes go into the mounted image: save it back, or turn on write-back, to keep them. |
+| Ultimate 64, 1541 Ultimate-II+ | works (Ultimate 64 and 64-II) | Mount `breadbin.d64` on drive 8. Its REU (512 KB or more) gives you `/tmp`. Writes go into the mounted image: save it back, or turn on write-back, to keep them. |
 | Pi1541 | should work | It emulates the 1541's hardware, so it behaves like a real drive. |
 | SD2IEC | untested | Mount the image (`CD:breadbin.d64`). It depends on the firmware handling the block commands on `.d64` images. |
 | Kung Fu Flash | needs a drive 8 | It can start the boot program, and it is out of the way once Breadbin runs ([#15](https://github.com/kpatr1981/breadbin/issues/15)). But everything else is on `breadbin.d64`, which must be on drive 8 (a 1541, Pi1541 or SD2IEC); without it the kernel stops with `no breadbin disk`. |
@@ -94,6 +94,7 @@ Things to know:
 
 - **No cartridges that stay on.** The kernel runs at `$8500–$CFFF`, over the area where a cartridge maps its ROM, so Action Replay, Final Cartridge, EasyFlash and the like must be removed or switched off. A cartridge that only starts the program and then gets out of the way, as Kung Fu Flash does, is fine. An REU or a GeoRAM is fine: they only use the I/O area.
 - **Disk access is slowish.** Breadbin has its own serial bus driver, and it loads a small routine into the 1541 that sends sectors about twice as fast as the standard protocol (the disk's rotation is the limit after that). Loading a command from a floppy still takes a second or two, and the system pauses while the drive works. A drive that can't run 1541 code (SD2IEC) gets the standard protocol. JiffyDOS doesn't help, but it doesn't get in the way either. With an REU of 256 KB or more, every block read from drive 8 is kept in the REU, so the second load of a command is instant.
+- **A drive that stops answering** gives an `i/o error` after about 20 seconds; the C64 doesn't freeze. A drive that was reset, or switched off and on, is opened again on its next use, without a reboot.
 - **Handled:** PAL and NTSC, C64s on DC power supplies (the clock runs from the timer, not the TOD input), and a C128 in C64 mode with a 1541 or 1571.
 - **1581 drives** work too: `build/breadbin.d81` boots from a 1581 (or an Ultimate with a .d81 mounted) and has 3200 blocks, and a 1581 in drive 9–11 takes Breadbin disks, normal 1581 disks and `format`. The fast disk routine is 1541 code, so a 1581 uses the standard protocol, and drive 8's REU copy is sized for a 1541. So with an REU, a system booted from a 1541 is quicker, with the 1581 in drive 9 for space (`mount 9 /mnt`): writing a small file took 13 s booted from a 1541 with an REU, against about 31 s booted from a 1581 on an Ultimate 64, and 30 s on a 1541 without an REU ([#4](https://github.com/kpatr1981/breadbin/issues/4)). Tested in VICE and on an Ultimate 64.
 - **Not supported:** 40-track 1541 disks.
@@ -128,7 +129,7 @@ On a C64 keyboard, `|` is **SHIFT + `-`**, and RUN/STOP interrupts the running c
 
 ## Disks
 
-The boot disk is mounted at `/`. More drives work too: put a disk in drive 9, 10 or 11 and `mount 9 /mnt`. A Breadbin disk keeps its directories; a normal C64 disk shows up flat and stays readable by other C64 software. To make a new disk, run `format 9 c64fs mydisk` (with directories) or `format 9 cbm mydisk` (a normal C64 disk). Both erase drive 9 and ask first. `df` shows free space, and `umount /mnt` detaches the disk.
+The boot disk is mounted at `/`. More drives work too: put a disk in drive 9, 10 or 11 and `mount 9 /mnt`. A Breadbin disk keeps its directories; a normal C64 disk shows up flat and stays readable by other C64 software. To make a new disk, run `format 9 c64fs mydisk` (with directories) or `format 9 cbm mydisk` (a normal C64 disk). Both erase drive 9 and ask first. `df` shows free space, `fsck` checks a Breadbin disk (`fsck -f` repairs it), `sync` writes changed blocks out now, and `umount /mnt` detaches the disk.
 
 [docs/filesystem.md](docs/filesystem.md) explains it all: the on-disk layout of c64fs (superblock, bitmap, inodes, directories), the REU/GeoRAM RAM disk, how normal C64 disks are handled, what `format` does, and the limits.
 
@@ -138,7 +139,7 @@ The boot disk is mounted at `/`. More drives work too: put a disk in drive 9, 10
 
 ## Commands
 
-`sh` `init` `login` `ls [-l] [-a]` `cat` `echo` `grep [-v] [-c]` `wc` `head [-n]` `tail [-n]` `sort [-r]` `tee [-a]` `more` `edit` `touch` `cp` `mv` `rm` `mkdir` `rmdir` `pwd` `stat` `hexdump` `ps` `kill [-sig]` `sleep` `free` `df` `mount` `umount` `format` `uptime` `date [yyyy-mm-dd] [hh:mm[:ss]]` `uname [-a]` `version` `whoami` `passwd` `theme` `help` `clear` `count` `basic` `as`
+`sh` `init` `login` `ls [-l] [-a]` `cat` `echo` `grep [-v] [-c]` `wc` `head [-n]` `tail [-n]` `sort [-r]` `tee [-a]` `more` `edit` `touch` `cp` `mv` `rm` `mkdir` `rmdir` `pwd` `stat` `hexdump` `ps` `kill [-sig]` `sleep` `free` `df` `mount` `umount` `format` `fsck [-f] [dir]` `sync` `uptime` `date [yyyy-mm-dd] [hh:mm[:ss]]` `uname [-a]` `version` `whoami` `passwd` `theme` `help` `clear` `count` `basic` `as`
 
 Shell built-ins: `cd`, `exit`, `kill`, `jobs`, `fg`, `bg`. CTRL-Z stops the foreground command. Cursor up and down recall earlier lines, and CTRL-I (TAB) completes a command or file name; pressed again, it lists the choices.
 
@@ -153,6 +154,7 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`, `fg`, `bg`. CTRL-Z stops the fore
 | `tools/mkimage.py` | builds and inspects disk images (`ls`, `cat` subcommands); `upgrade` converts a disk from 0.4 or earlier |
 | `tools/cx.py` | makes relocatable executables |
 | `tools/vicetest.py` | drives VICE for the automated tests |
+| `tools/ptest.py` | runs the system tests in parallel, one VICE per test class |
 | `docs/filesystem.md` | disks, mounting, `format`, and the on-disk layout |
 | `docs/programming.md` | writing programs: system calls, the library, building, porting Unix tools |
 | `docs/superpowers/` | design spec and implementation plan |
@@ -173,7 +175,7 @@ Shell built-ins: `cd`, `exit`, `kill`, `jobs`, `fg`, `bg`. CTRL-Z stops the fore
 
 **How does multitasking work on a 6502?** A CIA timer interrupt fires 60 times a second, and every 3 ticks the scheduler switches to the next ready process. The 6502 has a single stack page and a single zero page, so a switch copies the outgoing process's part of both into its save area and copies the next one's back in. A process that waits for a key, a pipe or a child is blocked and gets no CPU time.
 
-**Does it run on a C128?** Yes, in C64 mode, with a 1541 or a 1571. That has been tested in VICE only so far, like everything else (see [Real hardware](#real-hardware)).
+**Does it run on a C128?** Yes, in C64 mode, with a 1541 or a 1571. That has been tested in VICE only so far (see [Real hardware](#real-hardware)).
 
 **Are there compilers?** Not on the C64 yet. There is a 6502 assembler (`as`) and an integer BASIC (`basic`) that run on it. On a PC, any 6502 toolchain works; Breadbin itself is built with cc65. [docs/programming.md](docs/programming.md) explains how to write programs.
 
@@ -193,11 +195,14 @@ Breadbin is not the first Unix-like system for 6502 machines. It shares no code 
 
 ```sh
 make test-host   # image builder and relocation tool (fast, no VICE needed)
-make test        # boots VICE and drives the shell (slow, ~25 min)
+make test        # boots VICE and drives the shell (slow, ~30 min in parallel)
+make test-ntsc   # the same system tests on an NTSC machine
 make test-openroms  # the same system tests under the MEGA65 Open ROMs
+python3 tools/ptest.py --failed   # rerun only the classes that failed
+python3 -m unittest -v tests.test_features.Touch   # one class
 ```
 
-The system tests start `x64sc` (windows open minimized), type commands through VICE's remote monitor, and read the screen back. They need `x64sc` and `c1541` on your `PATH` (or set `X64SC=/path/to/x64sc`). Don't run other VICE instances at the same time: the tests are timing-sensitive under heavy CPU load.
+The system tests start `x64sc` without a window (`BB_WINDOW=1` shows it), type commands through VICE's remote monitor, and read the screen back. They need `x64sc` and `c1541` on your `PATH` (or set `X64SC=/path/to/x64sc`). Don't run other VICE instances at the same time: the tests are timing-sensitive under heavy CPU load.
 
 Extract a file from a disk image on the host:
 
