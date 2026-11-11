@@ -238,6 +238,30 @@ drive_open:
         clc
 @r:     rts
 
+; iec_again: after iec_read or iec_write of rq_dev failed. If the drive
+; itself said "70" (no channel: it was reset, switched off and on, and its
+; channels are gone), open it again: carry clear, try once more. Fast reads
+; are back on too (but never on a 1581, as in drive_open). Carry set if not.
+iec_again:
+        lda ie_st
+        and #$83            ; the status came over the bus (no bus error)
+        bne @no
+        lda tmp0
+        cmp #'7'
+        bne @no
+        lda tmp1
+        cmp #'0'
+        bne @no
+        ldx rq_dev
+        jsr iec_open        ; (keeps X; carry set if it isn't there)
+        bcs @r
+        lda dev_geo,x
+        beq @r
+        sta fl_bad,x
+@r:     rts
+@no:    sec
+        rts
+
 ; iec_close: X = dev
 iec_close:
         stx tmp2
@@ -348,8 +372,12 @@ bread:
 @iec:   lda rq_dev
         jsr cur_dev_set
         jsr iec_read
+        bcc @got
+        jsr iec_again       ; a drive that was reset: open it, try again
         bcs @chk
-        lda rq_dev
+        jsr iec_read
+        bcs @chk
+@got:   lda rq_dev
         bne @chk
         jsr dc_put          ; (clears carry)
         jmp @chk
@@ -401,8 +429,12 @@ bwrite:
         lda rq_dev
         jsr cur_dev_set
         jsr iec_write
+        bcc @put
+        jsr iec_again
         bcs @r
-        lda rq_dev
+        jsr iec_write
+        bcs @r
+@put:   lda rq_dev
         bne @r
         jsr dc_put          ; keep drive 8's REU copy current
         jmp @r

@@ -239,7 +239,7 @@ class GeoRAMRoot(unittest.TestCase):
 class StuckDrive(unittest.TestCase):
     """A drive that stops answering (here its CPU loops with interrupts off,
     so it never looks at ATN) gives an error, not a C64 hung with interrupts
-    off in a bus wait (#4)."""
+    off in a bus wait (#4); after a reset it works again (#37)."""
 
     def test_error_not_hang(self):
         with Vice(copy_image("stuck")) as v:
@@ -257,6 +257,13 @@ class StuckDrive(unittest.TestCase):
                     what="the shell prompt after the failed read")
             s = v.screen()
             self.assertIn("wc: ", s.split("$ wc /test/ring2049.txt")[-1])
+            # reset, the drive has lost its channels: the kernel opens it
+            # again and reads work (#37)
+            v._cmd("reset 8", wait=1)
+            v._cmd("x")
+            self.assertIn("2049", v.run("wc /test/ring2049.txt", timeout=200))
+            v.run("echo after reset > /home/reset.txt")
+            self.assertEqual(v.run("cat /home/reset.txt"), "after reset")
 
 
 if __name__ == "__main__":
