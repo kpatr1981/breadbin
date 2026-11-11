@@ -12,8 +12,15 @@
 ; iecin:     -> A = byte; ie_st bit 6 is set once the last byte (EOI) is in
 ; iecunlisten, iecuntalk
 ; All return carry set on a bus error (ie_st: $80 no device, $03 no frame
-; acknowledge, $02 read timeout).  X and Y are preserved.  ie_st keeps
-; every error since the last LISTEN/TALK, and iecunlisten reports them.
+; acknowledge, $02 read timeout, $01 write timeout).  X and Y are preserved.
+; ie_st keeps every error since the last LISTEN/TALK, and iecunlisten
+; reports them.
+;
+; Waiting for the other side to be ready (ie_send, iectalk, iecin) gives up
+; after ie_lim times 256 jiffies (IE_LIMIT: 17-21 s, about as long as
+; fast_read lets the drive read a sector). A drive that stops answering, or
+; one still running code that never looks at ATN, then gives an i/o error
+; instead of hanging the C64 with interrupts off.
 .include "k.inc"
 .import clk_tick
 
@@ -23,6 +30,10 @@ CIA2_ICR = $dd0d
 TB_LO    = $dd06        ; CIA2 timer B, one-shot: bus timeouts
 TB_HI    = $dd07
 TB_CR    = $dd0f
+
+.segment "ZEROPAGE"
+ie_lim:  .res 1         ; a wait's limit, in 256 jiffies (/bin/format: more)
+ie_end:  .res 1         ; the wait ends when ticks+1 gets here
 
 .segment "BSS"
 ie_buf:  .res 1         ; byte being sent
@@ -43,6 +54,8 @@ iec_init:
         sta ie_full
         sta ie_eoi
         sta ie_st
+        lda #IE_LIMIT
+        sta ie_lim
         rts
 
 .segment "CODE"
@@ -61,6 +74,7 @@ iectalk:
         ora #$40
         jsr ie_cmd
         bcs @r
+        jsr ie_arm
         ; turn the bus round: the drive becomes the talker
         sei
         jsr data_lo
@@ -72,8 +86,11 @@ iectalk:
         bvc @t              ; cycles, and count jiffies every 256 polls
         dex
         bne @p
-        jsr ie_tick
-        jmp @w
+        jsr ie_poll
+        bcc @w
+        ldx ie_x            ; the drive never took the bus
+        lda #$02
+        jmp ie_err
 @t:     ldx ie_x
         cli
         clc
@@ -135,8 +152,10 @@ iecin:
         sei
         lda #0
         sta ie_cnt
+        jsr ie_arm
         jsr clk_hi
-@rdy:   jsr ie_tick
+@rdy:   jsr ie_poll
+        bcs @late
         jsr deb
         bpl @rdy            ; until the talker releases CLK (ready to send)
 @eoi:   lda #0
@@ -154,7 +173,7 @@ iecin:
         bpl @go
 @to:    lda ie_cnt
         beq @ack
-        pla
+@late:  pla                 ; (or the talker was never ready)
         tax
         lda #$02            ; still nothing after the EOI handshake
         jmp ie_err
@@ -219,15 +238,18 @@ ie_send:
         jsr data_hi
         jsr deb
         bcs ie_nodev        ; nobody holds DATA: no device
+        jsr ie_arm
         jsr clk_hi          ; we are ready to send
         bit ie_eoi
         bpl @wait
-@e1:    jsr deb             ; EOI: the listener pulls DATA, then releases it
-                            ; (no ie_tick in these two: the pulse is short)
+@e1:    jsr ie_poll         ; EOI: the listener is ready (releases DATA),
+        bcs ie_wto          ; then pulls DATA and releases it again (no
+        jsr deb             ; ie_poll in @e2: that pulse is short)
         bcc @e1
 @e2:    jsr deb
         bcs @e2
-@wait:  jsr ie_tick
+@wait:  jsr ie_poll
+        bcs ie_wto
         jsr deb
         bcc @wait           ; until the listener is ready (DATA released)
         jsr clk_lo
@@ -272,6 +294,8 @@ ie_send:
 ie_nodev:
         lda #$80
         bne ie_err
+ie_wto: lda #$01            ; the listener was never ready
+        bne ie_err
 ie_frmerr:
         lda #$03
 ie_err: ora ie_st
@@ -300,7 +324,8 @@ ie_release:
 ie_tick:
         lda $dc0d
         lsr a               ; bit 0: CIA 1 timer A ran out
-        bcc @r
+        bcc ie_r
+ie_jiffy:
         txa
         pha
         inc ticks
@@ -311,7 +336,27 @@ ie_tick:
 @t:     jsr clk_tick
         pla
         tax
-@r:     rts
+ie_r:   rts
+
+; ie_arm: a wait starts: it may take ie_lim * 256 jiffies (less up to 255)
+ie_arm:
+        lda ticks+1
+        clc
+        adc ie_lim
+        sta ie_end
+        rts
+
+; ie_poll: ie_tick, and carry set once the wait's time is up. Keeps X, Y.
+ie_poll:
+        lda $dc0d
+        lsr a
+        bcc ie_r            ; no jiffy (carry clear)
+        jsr ie_jiffy
+        lda ticks+1
+        cmp ie_end
+        beq ie_r            ; time is up (carry set)
+        clc
+        rts
 
 ; deb: C = DATA in, N = CLK in (1 = released)
 deb:    lda PRA

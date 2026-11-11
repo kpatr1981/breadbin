@@ -236,5 +236,28 @@ class GeoRAMRoot(unittest.TestCase):
             self.assertEqual(got, ["%02x" % b for b in data[i * 256:i * 256 + 8]])
 
 
+class StuckDrive(unittest.TestCase):
+    """A drive that stops answering (here its CPU loops with interrupts off,
+    so it never looks at ATN) gives an error, not a C64 hung with interrupts
+    off in a bus wait (#4)."""
+
+    def test_error_not_hang(self):
+        with Vice(copy_image("stuck")) as v:
+            v.wait_shell()
+            v.run("ls /test | head -1")
+            v._cmd("device 8:", wait=0.5)
+            v._cmd("> 0300 78 4c 01 03", wait=0.3)     # sei; jmp *
+            v._cmd("r pc=0300", wait=0.3)
+            v._cmd("device c:", wait=0.5)
+            v._cmd("x")
+            v.type("wc /test/ring2049.txt\n")
+            # each bus wait gives up after about 20 s of the C64's clock
+            v._wait(lambda ls: [l for l in ls if l][-1] == "/ $"
+                    and any(l.endswith("$ wc /test/ring2049.txt") for l in ls), 300,
+                    what="the shell prompt after the failed read")
+            s = v.screen()
+            self.assertIn("wc: ", s.split("$ wc /test/ring2049.txt")[-1])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1061,12 +1061,19 @@ drv_upload:
         sta cmdbuf+5
         ldx up_off
         ldy #0
+        php
+        sei                 ; the drive code is under the KERNAL ROM
+        lda #MAP_RAM
+        sta $01
 @d:     lda drv_code,x
         sta cmdbuf+6,y
         inx
         iny
         cpy up_n
         bne @d
+        lda #MAP_KERNAL
+        sta $01
+        plp
         tya
         clc
         adc #6

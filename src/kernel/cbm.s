@@ -922,8 +922,12 @@ sys_diskio:
         cpy #39
         bne @cl
 @ce:    sty cmdlen
+        lda #IE_FORMAT      ; formatting keeps the drive busy for a minute
+        sta ie_lim          ; or more, and it answers nothing meanwhile
         lda mo_dev
         jsr iec_command
+        lda #IE_LIMIT       ; (keeps carry)
+        sta ie_lim
 @done:  php
         ldx mo_dev
         jsr iec_close
