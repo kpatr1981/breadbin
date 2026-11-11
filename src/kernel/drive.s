@@ -13,6 +13,9 @@
 ;    ends it (it has read the last bit; or, on an error, has seen the
 ;    status): the drive lets go of DATA only then.
 ; ATN is never used, so other drives on the bus stay idle.
+;
+; On the C64 the code lives in the RAM under the KERNAL ROM (HICODE, copied
+; there at boot): drv_upload reads it with the ROM switched out.
 .include "k.inc"
 .export drv_code, drv_size, DRV_ADDR
 
@@ -23,7 +26,7 @@ JOB3     = $0003        ; job code for buffer 3 ($80 = read; result 1 = ok)
 HDR3     = $000c        ; track, sector for buffer 3
 BUF3     = $0600
 
-.segment "RODATA"
+.segment "HICODE"
 drv_code:
 .org DRV_ADDR
         lda #$08            ; CLK low: running

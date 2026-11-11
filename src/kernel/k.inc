@@ -130,6 +130,9 @@ ST     = $90
 .global bget_buf, binval
 .global ieclisten, iectalk, iecout, iecin, iecunlisten, iecuntalk, iec_init
 .global ie_st
+.globalzp ie_lim
+IE_LIMIT  = 5       ; a serial bus wait's limit, in 256 jiffies (17-21 s)
+IE_FORMAT = 140     ; ... while a raw DOS command runs (N0: about 10 min)
 ; fs.s
 .global fs_mount, iget, iput, ci, ci_dev, ci_ino, bmap, namei, nameiparent
 .global fs_name, dir_lookup, dir_add, dir_remove, ialloc, itrunc, balloc
