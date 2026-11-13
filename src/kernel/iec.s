@@ -98,6 +98,7 @@ iectalk:
 
 ; ie_cmd: A = LISTEN/TALK byte, ie_sa = secondary. Both go out under ATN.
 ie_cmd:
+        jsr tty_hold        ; no serial NMI in a bus step (tty.s)
         pha
         lda #0
         sta ie_st
@@ -147,6 +148,7 @@ unl_unt:
         rts
 
 iecin:
+        jsr tty_hold
         txa
         pha
         sei
@@ -234,6 +236,7 @@ ie_sendatn:
         jsr w1ms
 ; ie_send: send ie_buf (EOI if ie_eoi bit 7)
 ie_send:
+        jsr tty_hold
         sei
         jsr data_hi
         jsr deb

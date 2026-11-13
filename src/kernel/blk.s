@@ -1003,6 +1003,7 @@ cw:     sta cw_want
 ; badline can't make it read early). A last pulse tells the drive the final
 ; bit has been read (it keeps DATA until then). Carry clear.
 fr_recv:
+        jsr tty_hold        ; no serial NMI in the transfer (tty.s)
         sei
         lda $dd00
         and #$07

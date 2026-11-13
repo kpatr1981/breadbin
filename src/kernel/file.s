@@ -299,6 +299,7 @@ fd_alloc:
         rts
 
 ; install: X = open-file entry -> A = new fd of cur (entry freed on error)
+.export fd_install
 fd_install:
         stx of_x
         jsr fd_alloc
@@ -411,6 +412,7 @@ sys_open:
         sta f_type,x
         jmp @inst
 @chr:   lda ci+I_MAJOR
+        jsr tty_chrhook     ; /dev/ttyS0 and /dev/tty (tty.s)
         cmp #MAJ_CON
         beq @con
         lda #FT_NULL
@@ -420,12 +422,14 @@ sys_open:
         sta f_type,x
 @inst:  jmp fd_install
 
-; isatty(A = fd): carry clear if fd is the console
+; isatty(A = fd): carry clear if fd is a terminal, X = which (0 the
+; console, 1 the serial line: tty_athook)
 .export sys_isatty, sys_utime, sys_seek
 sys_isatty:
         jsr fd_get
         bcs @r
         lda f_type,x
+        jsr tty_athook
         cmp #FT_CON
         beq @y
         lda #EINVAL
@@ -555,7 +559,8 @@ sys_read:
         cmp #FT_CON
         bne @n1
         jmp con_read
-@n1:    cmp #FT_PIPER
+@n1:    jsr tty_rdhook      ; the serial line (tty.s)
+        cmp #FT_PIPER
         bne *+5
         jmp pipe_read
         cmp #FT_NULL
@@ -757,7 +762,8 @@ sys_write:
         cmp #FT_CON
         bne @n1
         jmp con_write
-@n1:    cmp #FT_PIPEW
+@n1:    jsr tty_wrhook      ; the serial line (tty.s)
+        cmp #FT_PIPEW
         beq pipe_write
         cmp #FT_CBMW
         bne @n2

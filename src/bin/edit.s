@@ -8,7 +8,7 @@
 ; the ESC = / ESC K / ESC R escapes. Rows 0-23 show text (39 columns),
 ; row 24 is the status line.
 .include "../../include/breadbin.inc"
-.import argn, print
+.import argn, print, eprint
 
 TEXTMAX = 8192
 ROWS    = 24
@@ -38,7 +38,18 @@ msg:    .res 2          ; status message (0 = default)
 tmp:    .res 2
 
 .segment "CODE"
-start:  lda #0
+start:
+        lda #0              ; full screen: the console only. isatty gives
+        jsr SYS_ISATTY      ; X = the terminal (0 the console, 1 the serial
+        bcs @con            ; line, where cursor keys and colours differ)
+        txa
+        beq @con
+        lda #<m_cons
+        ldx #>m_cons
+        jsr eprint
+        lda #1
+        jmp SYS_EXIT
+@con:   lda #0
         sta tlen
         sta tlen+1
         sta cur
@@ -795,6 +806,7 @@ ptr_end:                    ; p = text + tlen, q = text + cur
         jmp ptr_cur
 
 .segment "RODATA"
+m_cons: .byte "edit: needs the console", 10, 0
 s_clear:   .byte 12, 0
 s_name:    .byte " edit: ", 0
 s_noname:  .byte "(new)", 0
