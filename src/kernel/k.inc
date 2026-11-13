@@ -39,6 +39,7 @@ PF_OUT     = $80    ; its pages are in the REU swap area (swap.s)
 ; wait channels
 CH_KEY   = $01      ; woken by the IRQ while keys are waiting (console)
 CH_SLEEP = $02      ; woken when ticks reach p_wk (sleep)
+CH_TTY   = $03      ; woken by tty_tick: the serial line has bytes or room
 CH_CHILD = $80      ; | parent slot
 CH_PIPE  = $40      ; | pipe index
 
@@ -50,10 +51,13 @@ FT_PIPER  = 3
 FT_PIPEW  = 4
 FT_CON    = 5
 FT_NULL   = 6
+FT_TTY    = 8      ; the serial line (tty.s); 7 is FT_CBMW
 
 ; device majors
 MAJ_NULL = 0
 MAJ_CON  = 1
+MAJ_TTY  = 2        ; /dev/ttyS0: the serial line (tty.s)
+MAJ_CTTY = 3        ; /dev/tty: the process's own terminal
 
 ; c64fs
 INO_SIZE   = 64         ; 4 per block
@@ -148,3 +152,6 @@ IE_FORMAT = 140     ; ... while a raw DOS command runs (N0: about 10 min)
 .global sys_spawn, spawn_kernel
 ; util
 .global strlen_r0, copy_name
+; tty.s: the serial line (each hook is one jsr in the code it extends)
+.global tty_boot, tty_init, tty_hold, tty_read, tty_write, tty_nmihook, tty_irqhook
+.global tty_sigchk, tty_chrhook, tty_athook, tty_rdhook, tty_wrhook, tty_cmhook, tty_on

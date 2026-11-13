@@ -341,7 +341,8 @@ irq:
         beq @nokey
         lda #CH_KEY
         jsr wakeup
-@nokey: ; RUN/STOP edge -> SIGINT to foreground processes
+@nokey: jsr tty_irqhook     ; the serial line (tty.s)
+        ; RUN/STOP edge -> SIGINT to foreground processes
         lda $91
         cmp #$7f
         bne @nostop
@@ -422,7 +423,7 @@ sigint_fg:
         lda #SIGINT
         sta fg_sig
         ldx #MAXPROC-1
-@l:     lda p_state,x
+@l:     jsr tty_sigchk      ; lda p_state,x: of this terminal's processes
         cmp #PS_READY
         beq @y
         cmp #PS_BLOCKED

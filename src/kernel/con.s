@@ -23,7 +23,7 @@ con_eof: .res 1
 esc_row: .res 1
 con_raw: .res 1         ; 1 = raw keys (no echo, no line editing)
 raw_pid: .res 1
-.export con_raw, raw_pid, to_ascii, to_petscii
+.export con_raw, raw_pid, to_ascii, to_petscii, bg_stop
 .import sigint_fg, sigtstp_fg
 dec_buf: .res 6
 
@@ -239,6 +239,7 @@ con_escape:
 ; con_setmode: A = 0 cooked, 1 raw (conmode syscall)
 .export sys_conmode, con_release
 sys_conmode:
+        jsr tty_cmhook      ; stdin on the serial line: its mode (tty.s)
         and #1
         sta con_raw
         ldx cur

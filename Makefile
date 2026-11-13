@@ -8,7 +8,7 @@ LIBSRC  := $(wildcard src/lib/*.s)
 LIBOBJ  := $(BUILD)/lib/breadbin.lib
 ROOTSRC := $(shell find rootfs -type f)
 
-.PHONY: all clean test test-host test-ntsc test-openroms webdemo video run run-reu run-d81
+.PHONY: all clean test test-host test-ntsc test-openroms webdemo video run run-reu run-d81 run-tty
 .SECONDARY:
 all: $(BUILD)/breadbin.d64 $(BUILD)/breadbin.d81
 
@@ -41,11 +41,11 @@ $(BUILD)/root/bin/%: $(BUILD)/p/%.o $(LIBOBJ) src/prog.cfg tools/cx.py
 $(BUILD)/breadbin.d64: $(BUILD)/breadbin.prg $(CX) $(ROOTSRC) tools/mkimage.py
 	@mkdir -p $(BUILD)/root
 	cp -R rootfs/. $(BUILD)/root/
-	python3 tools/mkimage.py build $@ --boot $(BUILD)/breadbin.prg --root $(BUILD)/root --dev console:1 --dev null:0
+	python3 tools/mkimage.py build $@ --boot $(BUILD)/breadbin.prg --root $(BUILD)/root --dev console:1 --dev null:0 --dev ttyS0:2 --dev tty:3
 
 # the same system on a 1581 disk (3200 blocks; e.g. for an Ultimate)
 $(BUILD)/breadbin.d81: $(BUILD)/breadbin.d64
-	python3 tools/mkimage.py build $@ --boot $(BUILD)/breadbin.prg --root $(BUILD)/root --dev console:1 --dev null:0
+	python3 tools/mkimage.py build $@ --boot $(BUILD)/breadbin.prg --root $(BUILD)/root --dev console:1 --dev null:0 --dev ttyS0:2 --dev tty:3
 
 # test image: the system plus the helper programs in tests/progs, as /test/*
 TPROGS  := $(patsubst tests/progs/%.s,%,$(wildcard tests/progs/*.s))
@@ -68,7 +68,7 @@ $(BUILD)/breadbin-test.d64: $(BUILD)/breadbin.d64 $(TCX) $(TDATA)
 	mkdir -p $(BUILD)/troot.all
 	cp -R $(BUILD)/root/. $(BUILD)/troot/. $(BUILD)/troot.all/
 	cp $(TDATA) $(BUILD)/troot.all/test/
-	python3 tools/mkimage.py build $@ --boot $(BUILD)/breadbin.prg --root $(BUILD)/troot.all --dev console:1 --dev null:0
+	python3 tools/mkimage.py build $@ --boot $(BUILD)/breadbin.prg --root $(BUILD)/troot.all --dev console:1 --dev null:0 --dev ttyS0:2 --dev tty:3
 
 test-host:
 	python3 -m unittest discover -s tools -p 'test_*.py'
@@ -108,6 +108,11 @@ run: all
 
 run-reu: all
 	x64sc -reu -reusize 512 -autostart $(BUILD)/breadbin.d64
+
+# with an emulated SwiftLink: VICE connects its serial line to 127.0.0.1:25232,
+# so start a listener first: socat -,raw,echo=0 tcp-listen:25232
+run-tty: all
+	x64sc -acia1 -acia1base 0xde00 -acia1irq 1 -acia1mode 1 -myaciadev 0 	  -rsdev1 127.0.0.1:25232 -rsdev1baud 9600 -autostart $(BUILD)/breadbin.d64
 
 run-d81: $(BUILD)/breadbin.d81
 	x64sc -drive8type 1581 -autostart $(BUILD)/breadbin.d81
