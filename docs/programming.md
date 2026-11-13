@@ -141,7 +141,7 @@ Every system call is a `jsr` into the jump table at `$CF00`. Its addresses are s
 | `SYS_READ` | A = fd, r0 = buffer, r1 = max length | r1 = count | r1 = 0 means end of file. From the console it returns one line |
 | `SYS_WRITE` | A = fd, r0 = buffer, r1 = length | r1 = count | writing to a pipe nobody reads raises `SIGPIPE` |
 | `SYS_PIPE` | | A = read fd, X = write fd | 256-byte kernel buffer; readers and writers block |
-| `SYS_ISATTY` | A = fd | carry clear if the console | |
+| `SYS_ISATTY` | A = fd | carry clear if a terminal; X = which (0 the console, 1 the serial line) | |
 | `SYS_CONMODE` | A = 0 cooked, 1 raw | | raw: one key per read, no echo (see below) |
 | `SYS_STAT` | r0 = path, r1 = 16-byte buffer | | type, nlink, size (3 bytes), inode, device, major, mtime (4), ctime (4). Types `T_FILE`, `T_DIR`, `T_CHR`. Times as `SYS_CLOCK`'s; 0 = unknown (a normal C64 disk). 0.4 and earlier filled only 8 bytes |
 | `SYS_UTIME` | r0 = path | | sets its mtime and ctime to now (`touch`). Does nothing on a normal C64 disk |
@@ -163,7 +163,8 @@ Every system call is a `jsr` into the jump table at `$CF00`. Its addresses are s
 
 - A process has **8 file descriptors**. The whole system has 24 open files and 4 pipes.
 - Paths are Unix paths: `/home/notes`, `../src`, relative to the current directory. A name is at most 14 characters.
-- `/dev/console` is the screen and keyboard and `/dev/null` discards. `/tmp` is a RAM disk when an REU or GeoRAM is present.
+- `/dev/console` is the screen and keyboard and `/dev/null` discards. `/dev/tty` is the terminal the process runs on (console or serial line), and `/dev/ttyS0` the serial line itself (SwiftLink or Turbo232; `ENODEV` without one). `/tmp` is a RAM disk when an REU or GeoRAM is present.
+- **The serial line** (a SwiftLink or Turbo232) works like the console: cooked and raw mode (`SYS_CONMODE` acts on the terminal of your stdin), the same key codes, and the same output escapes, translated for an ANSI terminal (`ESC =` becomes `ESC [ r ; c H`; colours, `ESC C`, are dropped). Write for both by using only what the console has. See [terminal.md](terminal.md).
 - Reading fd 0 when it is the console blocks until the user presses RETURN, and returns the line with its `10`. CTRL-D on an empty line is end of file.
 
 **Raw console mode** is for full-screen programs like `edit`. Call `SYS_CONMODE` with A = 1, and each `SYS_READ` then returns one key with no echo. Cursor keys arrive as control codes: `K_UP`, `K_DOWN`, `K_LEFT`, `K_RIGHT`, `K_HOME`, `K_CLR`, `K_DEL`, `K_RET`, `K_TAB` (CTRL-I), F1–F8 as `$85`–`$8C`, CTRL-letters as `$01`–`$1A`. Set mode 0 before you exit. The kernel also drops raw mode when the process that set it exits. In raw mode CTRL-Z is an ordinary key, and RUN/STOP still interrupts.

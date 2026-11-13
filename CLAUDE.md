@@ -49,6 +49,12 @@ does, `docs/programming.md` for the system calls and memory map, and
   Any change to that handshake must be checked by reading blocks both ways (fast and slow) and comparing: a boot alone
   looks fine with a corrupted last byte. The C64 side must only ever wait longer than needed. The drive code must stay under 256 bytes.
   On a timeout the kernel falls back to `U1` reads, which keeps SD2IEC working.
+- **The serial line** (`src/kernel/tty.s`, `docs/design-tty.md`): the SwiftLink interrupts through NMI. The NMI
+  handler must serve the ACIA until its status bit 7 is clear (the NMI input reacts to an edge: an interrupt left
+  pending blocks every later one, RESTORE too). Every serial bus step calls `tty_hold` first, and new bus code must
+  too: an NMI inside a timed transfer corrupts it. It costs kernel RAM only one `jsr` per hook: its code lives in
+  `$02A7-$02FF`, the cassette buffer (`$0334-$03FF`), the end of the jump table page and under the ROM (`tcall`).
+  Keep it that way, and never follow a free slot's parent (`tty_of`): stale parent slots can form a loop.
 - **Waiting for a bus pulse:** a fast drive (a 1581) holds CLK for only ~30 cycles at the talk turnaround. A wait for a
   pulse must poll in a tight loop (`bit PRA` / `bvc`, about 11 cycles a pass) and check its timeout only every few
   hundred passes; a loop that calls a routine on every pass misses the pulse and the C64 and the drive deadlock.

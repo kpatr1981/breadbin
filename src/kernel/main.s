@@ -4,12 +4,13 @@
 .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__, __RODATA_SIZE__, __DATA_SIZE__
 .import __JUMPTAB_LOAD__, __JUMPTAB_RUN__, __BSS_RUN__, __BSS_SIZE__, __ZP_SIZE__
 .import __HICODE_LOAD__, __HICODE_RUN__, __HICODE_SIZE__, __HIBSS_RUN__, __HIBSS_SIZE__
-.import __HI_START__
+.import __HI_START__, __TTYBSS_RUN__, __TTYBSS_SIZE__
 ; the swap code sits under the KERNAL ROM after the process tables, clear
 ; of the CPU vectors, and its tables are cleared with an 8-bit index
 .assert P_NAME + MAXPROC*NAMELEN <= __HI_START__, lderror, "HI overlaps the process tables"
 .assert __HICODE_RUN__ + __HICODE_SIZE__ + __HIBSS_SIZE__ + 255 < $FF00, lderror, "HI too big"
 .assert __HIBSS_SIZE__ < 256, lderror, "HIBSS over 255 bytes"
+.assert __TTYBSS_RUN__ + __TTYBSS_SIZE__ <= $FF00, lderror, "TTYBSS too big"
 
 .segment "ZEROPAGE"
 cur:          .res 1    ; current process slot, $FF = none
@@ -95,6 +96,8 @@ s_reuk: .byte " x 64k", 10, 0
 s_noreu: .byte "reu: none", 10, 0
 s_mount: .byte "no breadbin disk", 10    ; (two lines: 40 columns)
         .byte "put breadbin.d64 on drive 8", 0
+s_tty:  .byte "serial: on, /dev/ttyS0 9600 8n1", 10, 0
+s_ttygeo: .byte "serial: off (georam is at $de00)", 10, 0
 
 .segment "RODATA"
 s_init: .byte "/bin/init", 0
@@ -143,6 +146,7 @@ kmain:
         lda #1
         sta in_kernel
 
+        jsr tty_boot        ; the serial line's hooks, before the NMI vector
         ; vectors
         lda #<irq
         sta $0314
@@ -212,6 +216,7 @@ kmain:
         jsr file_init
         cli
         jsr blk_init
+        jsr tty_init        ; a SwiftLink? (after blk_init: not with GeoRAM)
         lda #<s_mem
         ldx #>s_mem
         jsr con_puts_ax
@@ -241,7 +246,19 @@ kmain:
 @noreu: lda #<s_noreu
         ldx #>s_noreu
         jsr con_puts_ax
-@mount: jsr fs_mount
+@mount: bit tty_on          ; the serial line (tty.s): on, or why not
+        bpl @nos
+        lda #<s_tty
+        ldx #>s_tty
+        jsr con_puts_ax
+        jmp @fs
+@nos:   lda ram_type
+        cmp #2
+        bne @fs
+        lda #<s_ttygeo
+        ldx #>s_ttygeo
+        jsr con_puts_ax
+@fs:    jsr fs_mount
         bcc @ok
         lda #<s_mount
         ldx #>s_mount
@@ -270,6 +287,7 @@ nmi_handler:
         pha
         txa
         pha
+        jsr tty_nmihook     ; the serial card interrupts here too (tty.s)
         lda #$7f            ; CIA 2 NMIs off, and acknowledged
         sta $dd0d
         lda $dd0d

@@ -1,4 +1,5 @@
-; more [file]: page through text, RETURN for the next page, q to quit
+; more [file]: page through text, RETURN for the next page, q to quit.
+; Keys come from /dev/tty: the terminal it runs on (console or serial).
 .include "../../include/breadbin.inc"
 .import argn, open_or_die, getc, set_input, putc, print
 PAGE = 22
@@ -57,7 +58,7 @@ col = $25
         jmp @page
 @d:     rts
 .segment "RODATA"
-devcon: .byte "/dev/console", 0
+devcon: .byte "/dev/tty", 0
 prompt: .byte "--more--", 0
 .segment "BSS"
 kb: .res 8
