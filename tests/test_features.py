@@ -888,6 +888,30 @@ class NonBlockingTTY(unittest.TestCase):
         self.assertEqual(self.v.run("echo ok"), "ok")
 
 
+class Chess(unittest.TestCase):
+    """a2a3 is a move (an 'a' followed by a rank digit); a bare 'a' is the AI command."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.v = Vice(copy_image("chess"))
+        cls.v.wait_shell()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.v.close()
+
+    def test_a_file_move_and_ai_command(self):
+        self.v.type("chess\n")
+        self.v.wait_for("white (")
+        self.v.type("a2a3\n")
+        self.v.wait_for("black (")       # accepted: it is Black's turn
+        self.assertNotIn("err:", self.v.screen().lower())
+        self.v.type("a\n")              # the AI moves for Black
+        self.v.wait_for("white (")
+        self.assertNotIn("err:", self.v.screen().lower())
+        self.v.type("q\n")
+
+
 class EchoOptions(unittest.TestCase):
     """echo -n (no newline) and -e (\\n \\e \\b \\a \\xHH \\\\). On the console the
     backslash is the pound key; the test types it as PETSCII $5c."""

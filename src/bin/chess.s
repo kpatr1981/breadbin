@@ -13,7 +13,9 @@
 ;  - One slot of undo (pc, cap, from, to); the king is found by scanning, not tracked.
 ;  - Board gaps (the 0x88 half) always hold 0, so scans need no &$88. Zero-page bytes are shared by lifetime.
 ;  - Strings are one blob indexed from X; the first-screen newline is shared with the footer.
-; Behaviour kept on purpose: any input starting with a, q, s or l is that command (so "a2a3" is an AI move).
+; One deliberate change from upstream: it ran any input starting with a as the AI command, so a2a3 and a2a4
+; could not be entered. Here an a followed by a rank digit is a move. Everything else is as upstream (any input
+; starting with q, s or l is that command; "a", "ai" ... are still the AI).
 ; Differences from upstream, all only reachable from a hand-made (illegal) save: a pawn on its far back rank
 ; may double-step; with a king missing there is no "check!" (upstream's answer came from an $FF sentinel);
 ; several kings, piece type 7, junk in the board gaps or a turn byte other than 0/$80 play differently.
@@ -115,6 +117,9 @@ loop:
 :
     cmp #'a'
     bne :+
+    lda in_buf+1
+    cmp #'1'            ; "a2a3" is a move (a rank digit follows); "a", "ai" ... are the AI command
+    bcs :+
     jmp ai
 :
 
