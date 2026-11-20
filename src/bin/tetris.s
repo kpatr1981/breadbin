@@ -1,13 +1,21 @@
-; tetris.s: basic terminal Tetris for Unix Breadbin
-; Uses ESC = row+32 col+32 cursor positioning (no direct screen write)
+; Ported from upstream Breadbin (https://github.com/kpatr1981/breadbin, MIT; Copyright 2026 Konstantinos Patronas),
+; tetris.s by Elena (upstream commit 246ec88; "vibed by Lenu"). Then size-optimised here: same game, same
+; screens (tools/test_games_sim.py holds the as-ported behaviour), a fraction of the bytes. The tricks, so that
+; nobody has to rediscover them (a CX program pays 2 bytes of relocation for every absolute reference to its
+; own image, so a `jsr label`, `jmp label`, `lda label` or `lda #>label` costs 2 more than it looks):
 ;
-; Keys: a/left = left, d/right = right, w/up = rotate, s/down = step down,
-;       space = hard drop, q = quit
-; Pieces fall by themselves (GRAV_TICKS); each type has its own glyph.
+;  * Everything scalar lives in zero page ($20-$22 are argv/argc, which this program never reads): no
+;    relocations, 2-byte instructions.
+;  * No user library: print/print_dec would pull lib.s and num.s (about 500 bytes). Output is one
+;    SYS_WRITE per screen update from `out`; the score is printed by a 5-entry subtraction table.
+;  * ZP `cb` is the write buffer "ESC = row col glyph": plotting a cell is `out`(cb, 5).
+;  * The 28 x 4 offset tables are 28 bytes: one 4-cell shape per piece, rotated at run time by
+;    (x,y) -> (k-y, x), k = 2 (3 for I). O never rotates (its table row never changed).
+;  * Left/right/rotate/down/hard drop are one `step`: add a delta to rot/px/py, undo if it collides.
+;  * The well's walls are drawn by draw_board together with the cells; the board is BSS (the loader zeroes it).
+;  * `bit abs` skips (.byte $2c) fall through into the shared tails; loops count down and test N.
 
 .include "../../include/breadbin.inc"
-
-.segment "CODE"
 
 BOARD_W     = 10
 BOARD_H     = 20
@@ -16,646 +24,474 @@ BOARD_LEFT  = 14
 SCORE_ROW   = 2
 SCORE_COL   = 28
 
-KBNDX       = $c6       ; KERNAL: keys in the keyboard buffer (only read)
-JIFFY       = $a2       ; KERNAL: low byte of the jiffy clock (60 Hz, only read)
-GRAV_TICKS  = 30        ; jiffies per automatic step down (30 = 0.5 s)
+KBNDX       = $c6       ; keys in the keyboard buffer (stock address, only read)
+JIFFY       = $a2       ; low byte of the jiffy clock, 60 Hz (stock address, only read)
+GRAV_TICKS  = 30        ; jiffies per automatic step down (0.5 s)
 
-; Zero-page scratch ($23-$2F is free for user programs)
-ptr1        = $23       ; 2 bytes
-ptr2        = $25       ; 2 bytes
-tmp_row     = $27
-tmp_col     = $28
-cur_piece   = $29       ; 0..6
-cur_rot     = $2a       ; 0..3
-cur_x       = $2b       ; signed, -2..BOARD_W
-cur_y       = $2c       ; 0..BOARD_H
-rng_state   = $2d       ; 1 byte (must never be 0)
-loop_i      = $2f
+; zero page: $20-$22 (argv, argc: not used here) and $23-$2F
+sl          = $20       ; score, low
+sh          = $21       ; score, high
+j           = $22       ; second counter / lines cleared by the piece that just landed
+piece       = $23       ; 1..7 = I O T S Z J L (also the glyph index; 0 = empty)
+rot         = $24       ; \  adjacent: `step` addresses them as rot+0, +1, +2
+px          = $25       ; |  piece column of the 4x4 box (signed: the box may overhang the wall)
+py          = $26       ; /  row
+rng         = $27       ; 8-bit LFSR, never 0
+tick        = $28       ; jiffy clock at the last step down
+i           = $29       ; loop counter
+cb          = $2a       ; 5 bytes: ESC '=' row+32 col+32 glyph (the cell write buffer)
+act         = $2f       ; the key's action (see `keys`)
 
-start:
-        ; Seed the PRNG from the clock (falls back to a constant)
-        lda #$a5
-        sta rng_state
-        lda #<clk_buf
-        sta r0
-        lda #>clk_buf
-        sta r0+1
-        lda #0
-        jsr SYS_CLOCK
-        bcs @seeded
-        lda clk_buf
-        ora #1              ; never zero
-        sta rng_state
-@seeded:
+.segment "CODE"
 
-        ; On the serial line the KERNAL keyboard buffer stays empty: read the
-        ; line through /dev/tty opened O_NONBLOCK instead (EAGAIN = no key).
-        ; If that open fails, fd 0 still works, but each read waits for a key.
+start:  jsr SYS_TIME            ; seed from the jiffy clock
+        ora #1                  ; never 0
+        sta rng
+        lda #ESC
+        sta cb
+        lda #'='
+        sta cb+1
+        ; On the serial line the KERNAL keyboard buffer stays empty: read it through /dev/tty opened
+        ; O_NONBLOCK instead (EAGAIN = no key). kfd stays 0 (read fd 0, look at KBNDX) on the console,
+        ; or if the open fails (each read then waits for a key).
         lda #0
         jsr SYS_ISATTY
-        bcs @kbd
+        bcs @con
         cpx #1
-        bne @kbd
-        stx on_serial
+        bne @con
         lda #<tty_path
         sta r0
         lda #>tty_path
         sta r0+1
         lda #(O_RDONLY | O_NONBLOCK)
         jsr SYS_OPEN
-        bcs @kbd
-        sta key_fd
-@kbd:
-
-        ; Enable raw terminal input so single keys take effect immediately
-        lda #1
-        jsr SYS_CONMODE
-
-        ; Clear screen
-        lda #K_CLR
-        jsr SYS_PUTC
-
-        jsr clear_board
-        jsr draw_frame
+        bcs @con
+        sta kfd
+@con:   lda #1
+        jsr SYS_CONMODE         ; raw: single keys take effect at once
+        lda #<frame
+        ldx #>frame
+        ldy #FRAME_LEN
+        jsr out                 ; clear the screen, draw the top and bottom borders
+        lda #0
+        sta sl
+        sta sh
+redraw: jsr draw_board
         jsr draw_score
-        jsr spawn_piece
-        jsr draw_piece
-        lda JIFFY
-        sta last_tick
 
-main_loop:
-        ; Never block in read. On the console, only read a key when the
-        ; KERNAL buffer has one; on the serial line the read itself says
-        ; (carry set: none yet).
-        lda on_serial
-        bne @ser
-        lda KBNDX
-        bne @key
-        beq @idle
-@ser:   jsr read_key
-        bcc @got
-@idle:  jsr SYS_YIELD       ; idle: let other processes run
-        lda JIFFY
-        sec
-        sbc last_tick       ; elapsed jiffies (wraps correctly mod 256)
-        cmp #GRAV_TICKS
-        bcc main_loop
-        jmp move_down       ; gravity tick
-@key:   jsr read_key        ; A = key code
-@got:   cmp #'q'
-        beq @quit
-        cmp #'Q'
-        beq @quit
-        cmp #'a'
-        beq @left
-        cmp #K_LEFT
-        beq @left
-        cmp #'d'
-        beq @right
-        cmp #K_RIGHT
-        beq @right
-        cmp #'s'
-        beq @down
-        cmp #K_DOWN
-        beq @down
-        cmp #'w'
-        beq @rot
-        cmp #K_UP
-        beq @rot
-        cmp #' '
-        beq @drop
-        jmp main_loop
-; (the handlers are out of branch range, so go through jmp)
-@quit:  jmp quit_game
-@left:  jmp move_left
-@right: jmp move_right
-@down:  jmp move_down
-@rot:   jmp rotate_cw
-@drop:  jmp hard_drop
-
-move_left:
-        jsr erase_piece
-        dec cur_x
-        jsr check_collision
-        bcc @ok
-        inc cur_x
-@ok:    jsr draw_piece
-        jmp main_loop
-
-move_right:
-        jsr erase_piece
-        inc cur_x
-        jsr check_collision
-        bcc @ok
-        dec cur_x
-@ok:    jsr draw_piece
-        jmp main_loop
-
-move_down:
-        lda JIFFY
-        sta last_tick       ; restart the gravity timer
-        jsr erase_piece
-        inc cur_y
-        jsr check_collision
-        bcc @ok
-        dec cur_y
-        jsr draw_piece
-        jsr settle          ; carry set = game over
-        bcs @over
-        jmp main_loop
-@over:  jmp quit_game
-@ok:    jsr draw_piece
-        jmp main_loop
-
-rotate_cw:
-        jsr erase_piece
-        lda cur_rot
-        pha
-        clc
-        adc #1
-        and #3
-        sta cur_rot
-        jsr check_collision
-        pla                 ; (pla leaves carry alone)
-        bcc @ok
-        sta cur_rot         ; collided: restore old rotation
-@ok:    jsr draw_piece
-        jmp main_loop
-
-hard_drop:
-        lda JIFFY
-        sta last_tick
-        jsr erase_piece
-@drop:  inc cur_y
-        jsr check_collision
-        bcc @drop
-        dec cur_y
-        jsr draw_piece
-        jsr settle
-        bcs @over
-        jmp main_loop
-@over:  jmp quit_game
-
-quit_game:
-        lda #BOARD_TOP+10
-        ldx #BOARD_LEFT+1
-        jsr goto_xy
-        lda #<msg_over
-        ldx #>msg_over
-        jsr SYS_PRINT
-
-        lda #0
-        jsr SYS_CONMODE
-
-        lda #BOARD_TOP+22
-        ldx #0
-        jsr goto_xy
-
-        lda #0
-        jsr SYS_EXIT
-
-; settle: current piece has landed. Lock it, clear lines, spawn the next.
-; Returns carry set if the new piece does not fit (game over).
-settle:
-        jsr lock_piece
-        lda #0
-        sta cleared
-        jsr clear_lines
-        lda cleared
-        beq @nd
-        jsr draw_board
-        jsr draw_score
-@nd:    jsr spawn_piece
-        jsr check_collision
-        bcs @over
-        jsr draw_piece
-        clc
-@over:  rts
-
-; ----------------------------------------------------------------------
-; Terminal helpers (ESC = row+32 col+32)
-; ----------------------------------------------------------------------
-
-; goto_xy: A = row (0..24), X = col (0..39)
-goto_xy:
-        sta tmp_row
-        stx tmp_col
-        lda #ESC
-        jsr SYS_PUTC
-        lda #'='
-        jsr SYS_PUTC
-        lda tmp_row
-        clc
-        adc #32
-        jsr SYS_PUTC        ; row + 32
-        lda tmp_col
-        clc
-        adc #32
-        jmp SYS_PUTC        ; col + 32
-
-; draw_cell: A = row, X = col, Y = 0 (empty) or piece+1 (1..7)
-; Each piece type has its own ASCII glyph (see glyphs).
-draw_cell:
-        sty ptr2
-        jsr goto_xy
-        ldy ptr2
-        lda glyphs,y
-        jmp SYS_PUTC
-
-; read_key: read 1 byte from key_fd -> A, carry clear ('q' on error/EOF);
-; carry set if nothing has been typed yet (EAGAIN, O_NONBLOCK only)
-read_key:
-        lda #<key_buf
-        sta r0
-        lda #>key_buf
-        sta r0+1
-        lda #1
-        sta r1
-        lda #0
-        sta r1+1
-        lda key_fd
-        jsr SYS_READ
-        bcs @err
-        lda r1
-        beq @eof            ; end of file (CTRL-D)
-        lda key_buf
-        rts
-@err:   cmp #EAGAIN
-        beq @none
-@eof:   lda #'q'
-        clc
-@none:  rts
-
-; ----------------------------------------------------------------------
-; Board & rendering
-; ----------------------------------------------------------------------
-
-clear_board:
-        ldx #0
-        txa
-@l:     sta board,x
-        inx
-        cpx #BOARD_W * BOARD_H
-        bne @l
-        sta score
-        sta score+1
-        rts
-
-draw_frame:
-        ; Top border
-        lda #BOARD_TOP-1
-        ldx #BOARD_LEFT-1
-        jsr goto_xy
-        lda #'+'
-        jsr SYS_PUTC
-        lda #BOARD_W
-        sta loop_i          ; (counter in memory: syscalls may trash X)
-@top:   lda #'-'
-        jsr SYS_PUTC
-        dec loop_i
-        bne @top
-        lda #'+'
-        jsr SYS_PUTC
-
-        ; Side walls
-        lda #0
-        sta loop_i
-@side:  lda loop_i
-        clc
-        adc #BOARD_TOP
-        ldx #BOARD_LEFT-1
-        jsr goto_xy
-        lda #'|'
-        jsr SYS_PUTC
-        lda loop_i
-        clc
-        adc #BOARD_TOP
-        ldx #BOARD_LEFT+BOARD_W
-        jsr goto_xy
-        lda #'|'
-        jsr SYS_PUTC
-        inc loop_i
-        lda loop_i
-        cmp #BOARD_H
-        bne @side
-
-        ; Bottom border
-        lda #BOARD_TOP+BOARD_H
-        ldx #BOARD_LEFT-1
-        jsr goto_xy
-        lda #'+'
-        jsr SYS_PUTC
-        lda #BOARD_W
-        sta loop_i
-@bot:   lda #'-'
-        jsr SYS_PUTC
-        dec loop_i
-        bne @bot
-        lda #'+'
-        jmp SYS_PUTC
-
-draw_board:
-        lda #0
-        sta b_row
-@row:   lda #0
-        sta b_col
-@col:   lda b_row
-        ldx b_col
-        jsr board_get
-        tay
-        lda b_row
-        clc
-        adc #BOARD_TOP
-        pha
-        lda b_col
-        clc
-        adc #BOARD_LEFT
-        tax
-        pla
-        ; A = row, X = col, Y = cell
-        jsr draw_cell
-        inc b_col
-        lda b_col
-        cmp #BOARD_W
-        bne @col
-        inc b_row
-        lda b_row
-        cmp #BOARD_H
-        bne @row
-        rts
-
-draw_score:
-        lda #SCORE_ROW
-        ldx #SCORE_COL
-        jsr goto_xy
-        lda #<msg_score
-        ldx #>msg_score
-        jsr SYS_PRINT
-        lda score
-        ldx score+1
-        jmp SYS_PRINTDEC
-
-; ----------------------------------------------------------------------
-; Piece logic
-; ----------------------------------------------------------------------
-
-spawn_piece:
-@r:     jsr next_rand
+; the next piece: an LFSR step, 0..6 only (so all seven are equally likely), at the top
+newp:   lda rng
+        asl a
+        bcc @n
+        eor #$1d
+@n:     sta rng
         and #7
         cmp #7
-        bcs @r              ; reject 7 so all pieces are equally likely
-        sta cur_piece
+        bcs newp
+        adc #1                  ; (carry is clear)
+        sta piece
         lda #0
-        sta cur_rot
+        sta rot
+        sta py
         lda #3
-        sta cur_x
+        sta px
+        jsr check
+        bcs quit                ; does not fit: game over
+        jsr draw_piece
+        lda JIFFY
+        sta tick
+
+; never block in read: on the console a key is read only when the keyboard buffer has one; on the
+; serial line the read itself says (carry set: none yet)
+ml:     lda kfd
+        bne @ser
+        lda KBNDX
+        bne rdkey
+        beq @idle
+@ser:   jsr read_key
+        bcc got
+@idle:  jsr SYS_YIELD           ; idle: let other processes run
+        lda JIFFY
+        sec
+        sbc tick                ; elapsed jiffies (wraps correctly mod 256)
+        cmp #GRAV_TICKS
+        bcc ml
+        ldx #4                  ; gravity is the "down" action
+        bne go
+
+quit:   lda #<msg_over
+        ldx #>msg_over
+        ldy #OVER_LEN
+        jsr out
         lda #0
-        sta cur_y
-        rts
+        jsr SYS_CONMODE         ; cooked again
+        lda #0
+        jmp SYS_EXIT
 
-draw_piece:
-        ldy cur_piece
-        iny                 ; cell value = piece + 1 (0 = empty)
-        jmp plot_piece
-
-erase_piece:
-        ldy #0
-        jmp plot_piece
-
-; cell_x: X = table index of cell loop_i of the current piece/rotation
-;         (piece*16 + rot*4 + loop_i)
-cell_x:
-        lda cur_piece
-        asl a
-        asl a
-        asl a
-        asl a
-        sta ptr1
-        lda cur_rot
-        asl a
-        asl a
-        clc
-        adc ptr1
-        adc loop_i
+rdkey:  jsr read_key
+got:    ldx #10
+@f:     cmp keys,x
+        beq @found
+        dex
+        bpl @f
+        bmi ml                  ; not a key we know
+@found: txa
+        lsr a                   ; two keys per action
         tax
-        rts
+go:     beq quit                ; action 0
+        stx act
+        cpx #3
+        bne @nr
+        lda piece
+        cmp #2
+        beq ml                  ; O: rotating changes nothing
+@nr:    cpx #4
+        bcc @nt
+        lda JIFFY               ; down and hard drop restart the gravity timer
+        sta tick
+@nt:    jsr erase_piece
+@lp:    jsr step                ; C = blocked
+        ldx act
+        bcs @blk
+        cpx #5
+        beq @lp                 ; hard drop: keep falling
+@dr:    jsr draw_piece
+        jmp ml
+@blk:   cpx #4
+        bcc @dr                 ; a blocked left/right/rotate just stays
+        jsr draw_piece
 
-; plot_piece: Y = 0 (erase) or piece+1 (draw)
-plot_piece:
-        sty ptr2+1
+; the piece has landed: lock it, take full rows out (bottom to top), score them
+        lda #3
+        sta i
+@lk:    jsr cell
+        jsr bidx
+        lda piece
+        sta board,y
+        dec i
+        bpl @lk
         lda #0
-        sta loop_i
-@i:     jsr cell_x
-        lda cur_y
-        clc
-        adc cell_dy,x
-        cmp #BOARD_H
-        bcs @skip
-        sta tmp_row
-        lda cur_x
-        clc
-        adc cell_dx,x
-        cmp #BOARD_W        ; negative x looks >= 128, so it is skipped too
-        bcs @skip
-        sta tmp_col
-        lda tmp_row
-        clc
-        adc #BOARD_TOP
-        pha
-        lda tmp_col
-        clc
-        adc #BOARD_LEFT
-        tax
-        pla
-        ldy ptr2+1
-        jsr draw_cell
-@skip:  inc loop_i
-        lda loop_i
-        cmp #4
-        bne @i
-        rts
-
-check_collision:
-        ; Returns Carry=1 on collision, Carry=0 if clear
-        lda #0
-        sta loop_i
-@i:     jsr cell_x
-        lda cur_x
-        clc
-        adc cell_dx,x
-        bmi @hit
-        cmp #BOARD_W
-        bcs @hit
-        sta tmp_col
-
-        lda cur_y
-        clc
-        adc cell_dy,x
-        bmi @hit
-        cmp #BOARD_H
-        bcs @hit
-        sta tmp_row
-
-        lda tmp_row
-        ldx tmp_col
-        jsr board_get
-        bne @hit
-        inc loop_i
-        lda loop_i
-        cmp #4
-        bne @i
-        clc
-        rts
-@hit:   sec
-        rts
-
-lock_piece:
-        lda #0
-        sta loop_i
-@i:     jsr cell_x
-        lda cur_y
-        clc
-        adc cell_dy,x
-        sta tmp_row
-        lda cur_x
-        clc
-        adc cell_dx,x
-        sta tmp_col
-        lda tmp_row
-        ldx tmp_col
-        jsr board_set
-        inc loop_i
-        lda loop_i
-        cmp #4
-        bne @i
-        rts
-
-; clear_lines: remove every full row (bottom to top), shifting the rows
-; above down, add 1 to score per row and count them in `cleared`.
-clear_lines:
-        lda #BOARD_H-1
-        sta b_row
-@row:   lda b_row
-        ldx #0
-        jsr board_idx       ; Y = b_row * BOARD_W
-        sty base
-        ldx #0
-@chk:   txa
-        clc
-        adc base
-        tay
-        lda board,y
-        beq @next_row       ; hole: row not full
-        inx
-        cpx #BOARD_W
-        bne @chk
-
-        ; Full row: score it
-        inc score
-        bne @s1
-        inc score+1
-@s1:    inc cleared
-
-        ; Shift rows 0..b_row-1 down by one row
-        ldy base
+        sta j
+        lda #BOARD_W*(BOARD_H-1)
+        sta i                   ; (index of the first cell of the row being looked at)
+@row:   ldy i
+        ldx #BOARD_W
+@c:     lda board,y
+        beq @next               ; a hole: not full
+        iny
+        dex
+        bne @c
+        inc j
+        inc sl
+        bne @s
+        inc sh
+@s:     ldy i
         beq @clr
-@sh:    dey
+@sh:    dey                     ; the rows above move down one
         lda board,y
         sta board+BOARD_W,y
         tya
         bne @sh
 @clr:   ldx #BOARD_W-1
         lda #0
-@c:     sta board,x
+@z:     sta board,x
         dex
-        bpl @c
-        jmp @row            ; same row now holds new data: check it again
+        bpl @z
+        bmi @row                ; (N set) the same row holds new cells now: look again
+@next:  lda i
+        sec
+        sbc #BOARD_W
+        sta i
+        bcs @row
+        lda j
+        bne @rd
+        jmp newp
+@rd:    jmp redraw              ; something cleared: redraw the well and the score
 
-@next_row:
-        dec b_row
-        bmi @done
-        jmp @row
-@done:  rts
+; step: add delta to the variable at rot+vt, and take it back if the piece collides. C = blocked.
+step:   ldx act
+        ldy vt-1,x
+        lda rot,y
+        pha                     ; the old value
+        clc
+        adc dt-1,x
+        sta rot,y
+        jsr check
+        pla                     ; (leaves C alone)
+        bcc @r
+        ldx act
+        ldy vt-1,x
+        sta rot,y
+        sec
+@r:     rts
 
-; board_idx: A = row, X = col -> Y = row*BOARD_W + col
-board_idx:
-        stx ptr1            ; col
-        sta ptr1+1          ; row
-        asl a
-        sta ptr2            ; row*2
-        lda ptr1+1
-        asl a
-        asl a
-        asl a               ; row*8
+; check: C = 1 if the piece overlaps a wall, the floor or a locked cell
+check:  lda #3
+        sta i
+@l:     jsr cell
+        cmp #BOARD_W            ; a negative column is >= 128
+        bcs @hit
+        cpx #BOARD_H
+        bcs @hit
+        jsr bidx
+        lda board,y
+        bne @hit
+        dec i
+        bpl @l
         clc
-        adc ptr2            ; row*10
+        rts
+@hit:   sec
+        rts
+
+; cell: cell i of the piece -> A = board column, X = board row. The shape's cell is rotated `rot` times
+; by (x,y) -> (k-y, x); r2 holds x and r2+1 y, j the constant k. Trashes r2, r2+1, j.
+cell:   lda piece
+        asl a
+        asl a
+        ora i
+        tax
+        lda shapes-4,x          ; x*4 + y
+        pha
+        lsr a
+        lsr a
+        sta r2
+        pla
+        and #3
+        sta r2+1
+        lda #2
+        ldx piece
+        cpx #1
+        bne @k
+        lda #3                  ; the I piece turns around a point between cells
+@k:     sta j
+        lda rot
+        and #3
+        tax
+        beq @d
+@r:     lda j
+        sec
+        sbc r2+1
+        ldy r2
+        sty r2+1
+        sta r2
+        dex
+        bne @r
+@d:     lda r2
         clc
-        adc ptr1
+        adc px
+        pha
+        lda r2+1
+        clc
+        adc py
+        tax
+        pla
+        rts
+
+; bidx: A = column, X = row -> Y = row*10 + column. Trashes r2.
+bidx:   sta r2
+        txa
+        asl a
+        sta r2+1
+        asl a
+        asl a                   ; row*8 < 256: carry is clear
+        adc r2+1                ; row*10
+        adc r2
         tay
         rts
 
-; board_get: A = row, X = col -> A = cell (0 = empty, else piece+1), Z set if empty
-board_get:
-        jsr board_idx
+; erase_piece / draw_piece: plot the piece's cells as blanks / as its glyph
+erase_piece:
+        ldy #0
+        .byte $2c               ; bit abs: skips the next ldy
+draw_piece:
+        ldy piece
+        lda glyphs,y
+        sta cb+4
+        lda #3
+        sta i
+@l:     jsr cell
+        jsr put_at
+        dec i
+        bpl @l
+        rts
+
+; draw_board: the whole well, walls included (columns -1 and 10)
+draw_board:
+        lda #BOARD_H-1
+        sta i
+@row:   lda #BOARD_W
+        sta j
+@col:   lda j
+        cmp #BOARD_W            ; 10, or -1 (= 255)
+        bcs @wall
+        ldx i
+        jsr bidx
         lda board,y
+        tay
+        lda glyphs,y
+        .byte $2c               ; bit abs: skips the next lda
+@wall:  lda #'|'
+        sta cb+4
+        lda j
+        ldx i
+        jsr put_at
+        dec j
+        lda j
+        cmp #$fe
+        bne @col
+        dec i
+        bpl @row
         rts
 
-; board_set: A = row, X = col -> sets board cell to piece+1
-board_set:
-        jsr board_idx
-        lda cur_piece
+; draw_score: the label and the number, no leading zeros (digit by subtraction of 10000 .. 1)
+draw_score:
+        lda #<msg_score
+        ldx #>msg_score
+        ldy #SCORE_LEN
+        jsr out
+        lda sl
+        sta cb+2                ; (the remainder: row and column are not needed now)
+        lda sh
+        sta cb+3
+        lda #0
+        sta j                   ; nonzero once a digit was printed
+        lda #8
+        sta i                   ; 2 * power of ten
+@dig:   ldx i
+        ldy #'0'-1
+@sub:   iny
+        lda cb+2
+        sec
+        sbc pwl,x
+        sta r2
+        lda cb+3
+        sbc pwh,x
+        bcc @got
+        sta cb+3
+        lda r2
+        sta cb+2
+        bcs @sub                ; (always)
+@got:   tya
+        ldx i
+        beq @pr                 ; the units digit is always printed
+        cmp #'0'
+        bne @pr
+        ldx j
+        beq @nx                 ; a leading zero
+@pr:    sta j
+        sta cb+4
+        lda #cb+4
+        ldx #0
+        ldy #1
+        jsr out
+@nx:    dec i
+        dec i
+        bpl @dig
+        rts
+
+; put_at: A = board column, X = board row, glyph already in cb+4: draw it. Falls into out.
+put_at: clc
+        adc #BOARD_LEFT+32
+        sta cb+3
+        txa
         clc
-        adc #1
-        sta board,y
-        rts
+        adc #BOARD_TOP+32
+        sta cb+2
+        lda #cb
+        ldx #0
+        ldy #5
+; out: write Y bytes at A/X to the console (fd 1)
+out:    sta r0
+        stx r0+1
+        sty r1
+        ldx #0
+        stx r1+1
+        inx
+        txa
+        jmp SYS_WRITE
 
-; 8-bit Galois LFSR (period 255), A = new value
-next_rand:
-        lda rng_state
-        asl a
-        bcc @ok
-        eor #$1d
-@ok:    sta rng_state
+; read_key: one byte from fd kfd -> A, carry clear; 'q' if the read fails or hits end of file;
+; carry set (A = 'q', ignored) if nothing has been typed yet (EAGAIN: O_NONBLOCK only)
+read_key:
+        lda #'q'
+        sta cb+4
+        lda #cb+4
+        sta r0
+        lda #0
+        sta r0+1
+        sta r1+1
+        lda #1
+        sta r1
+        lda kfd
+        jsr SYS_READ
+        bcs @err
+        clc                     ; (end of file wrote nothing: still 'q')
+        lda cb+4
+        rts
+@err:   cmp #EAGAIN
+        beq @none
+        clc
+@none:  lda cb+4
         rts
 
 ; ----------------------------------------------------------------------
-; Data
-; ----------------------------------------------------------------------
+tty_path: .byte "/dev/tty", 0
+frame:  .byte K_CLR
+        .byte ESC,'=',BOARD_TOP-1+32,BOARD_LEFT-1+32,"+----------+"
+        .byte ESC,'=',BOARD_TOP+BOARD_H+32,BOARD_LEFT-1+32,"+----------+"
+FRAME_LEN = * - frame
+msg_score:
+        .byte ESC,'=',SCORE_ROW+32,SCORE_COL+32,"SCORE: "
+SCORE_LEN = * - msg_score
+msg_over:
+        .byte ESC,'=',BOARD_TOP+10+32,BOARD_LEFT+1+32,"GAME OVER"
+        .byte ESC,'=',BOARD_TOP+22+32,32                ; leave the cursor below the well
+OVER_LEN = * - msg_over
 
-msg_score:  .byte "SCORE: ", 0
-msg_over:   .byte "GAME OVER", 0
+; two keys per action: 0 quit, 1 left, 2 right, 3 rotate, 4 down, 5 hard drop
+keys:   .byte 'q','Q','a',K_LEFT,'d',K_RIGHT,'w',K_UP,'s',K_DOWN,' '
+vt:     .byte 1,1,0,2,2         ; the variable at rot+n that each action changes: px px rot py py
+dt:     .byte $ff,1,1,1,1       ; and by how much
 
-; Glyph for each cell value: empty, then I O T S Z J L
-glyphs:     .byte ' ', '#', 'O', '@', '%', '&', '*', '='
+pwl:    .byte <1,<10,<100,<1000,<10000
+pwh:    .byte >1,>10,>100,>1000,>10000
 
-; Cell offsets inside a 4x4 box. Index = piece*16 + rot*4 + cell.
-; Pieces: I O T S Z J L
-cell_dx:
-        .byte 0,1,2,3,  2,2,2,2,  0,1,2,3,  1,1,1,1     ; I
-        .byte 1,2,1,2,  1,2,1,2,  1,2,1,2,  1,2,1,2     ; O
-        .byte 1,0,1,2,  1,1,2,1,  0,1,2,1,  1,0,1,1     ; T
-        .byte 1,2,0,1,  1,1,2,2,  1,2,0,1,  0,0,1,1     ; S
-        .byte 0,1,1,2,  2,1,2,1,  0,1,1,2,  1,0,1,0     ; Z
-        .byte 0,0,1,2,  1,2,1,1,  0,1,2,2,  1,1,0,1     ; J
-        .byte 2,0,1,2,  1,1,1,2,  0,1,2,0,  0,1,1,1     ; L
-cell_dy:
-        .byte 1,1,1,1,  0,1,2,3,  2,2,2,2,  0,1,2,3     ; I
-        .byte 0,0,1,1,  0,0,1,1,  0,0,1,1,  0,0,1,1     ; O
-        .byte 0,1,1,1,  0,1,1,2,  1,1,1,2,  0,1,1,2     ; T
-        .byte 0,0,1,1,  0,1,1,2,  1,1,2,2,  0,1,1,2     ; S
-        .byte 0,0,1,1,  0,1,1,2,  1,1,2,2,  0,1,1,2     ; Z
-        .byte 0,1,1,1,  0,0,1,2,  1,1,1,2,  0,1,2,2     ; J
-        .byte 0,1,1,1,  0,1,2,2,  1,1,1,2,  0,0,1,2     ; L
+; glyph for each cell value: empty, then I O T S Z J L
+glyphs: .byte ' ','#','O','@','%','&','*','='
 
-b_row:      .byte 0
-b_col:      .byte 0
-base:       .byte 0
-cleared:    .byte 0
-last_tick:  .byte 0
-key_buf:    .byte 0
-key_fd:     .byte 0     ; where keys come from: fd 0, or /dev/tty opened O_NONBLOCK
-on_serial:  .byte 0     ; 1: playing on the serial line (no KBNDX to look at)
-tty_path:   .byte "/dev/tty", 0
-clk_buf:    .res 4
-score:      .word 0
-board:      .res BOARD_W * BOARD_H
+; the four cells of each piece (x*4 + y, in its 4x4 box), rotation 0
+.macro pt xx, yy
+        .byte (xx)*4 + (yy)
+.endmacro
+shapes: pt 0,1
+        pt 1,1
+        pt 2,1
+        pt 3,1                   ; I
+        pt 1,0
+        pt 2,0
+        pt 1,1
+        pt 2,1                   ; O
+        pt 1,0
+        pt 0,1
+        pt 1,1
+        pt 2,1                   ; T
+        pt 1,0
+        pt 2,0
+        pt 0,1
+        pt 1,1                   ; S
+        pt 0,0
+        pt 1,0
+        pt 1,1
+        pt 2,1                   ; Z
+        pt 0,0
+        pt 0,1
+        pt 1,1
+        pt 2,1                   ; J
+        pt 2,0
+        pt 0,1
+        pt 1,1
+        pt 2,1                   ; L
+
+.segment "BSS"
+kfd:    .res 1                  ; where keys come from: 0 = fd 0 (console), else /dev/tty, O_NONBLOCK
+board:  .res BOARD_W * BOARD_H
