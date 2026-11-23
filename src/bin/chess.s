@@ -732,7 +732,7 @@ validate_pawn:
     sbc #$10
     tax
     lda board,x
-    bne @bad
+    bne @w_cap              ; blocked: no double step, but it can still capture
     lda zp_from
     sec
     sbc #$20
@@ -784,7 +784,7 @@ validate_pawn:
     adc #$10
     tax
     lda board,x
-    bne @bad
+    bne @b_cap              ; blocked: no double step, but it can still capture
     lda zp_from
     clc
     adc #$20

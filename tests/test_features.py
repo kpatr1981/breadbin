@@ -888,6 +888,47 @@ class NonBlockingTTY(unittest.TestCase):
         self.assertEqual(self.v.run("echo ok"), "ok")
 
 
+class Chess(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.v = Vice(copy_image("chess"))
+        cls.v.wait_shell()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.v.close()
+
+    def play(self, *moves):
+        """Start chess and play the moves, White first. Each wait is for the
+        *other* side's prompt after the last one on screen, so an old prompt
+        cannot satisfy it. Returns the screen once the next move is asked for."""
+        self.v.run("echo")          # clears the screen: no prompt of an earlier game is left on it
+        self.v.type("chess\n")
+        s = self.v.wait_for("white (")
+        for i, mv in enumerate(moves):
+            now, nxt = ("white (", "black (") if i % 2 == 0 else ("black (", "white (")
+            self.v.type(mv + "\n")
+            s = self.v.wait_for(nxt, after=now)
+            self.assertNotIn("err:", s.split(now)[-1])
+        return s
+
+    def quit(self):
+        self.v.type("q\n")
+        self.v.wait_shell()
+
+    def test_a_blocked_white_pawn_on_its_start_rank_can_capture(self):
+        # c2 is blocked by its own knight on c3, and takes the black knight that arrives on d3
+        s = self.play("b1c3", "b8c6", "h2h3", "c6b4", "h3h4", "b4d3", "c2d3")
+        self.assertIn("3 . . N P . . . .", s)
+        self.quit()
+
+    def test_a_blocked_black_pawn_on_its_start_rank_can_capture(self):
+        # c7 is blocked by its own knight on c6, and takes the white knight that arrives on d6
+        s = self.play("b1c3", "b8c6", "c3b5", "g8f6", "b5d6", "c7d6")
+        self.assertIn("6 . . n p . n . .", s)
+        self.quit()
+
+
 class EchoOptions(unittest.TestCase):
     """echo -n (no newline) and -e (\\n \\e \\b \\a \\xHH \\\\). On the console the
     backslash is the pound key; the test types it as PETSCII $5c."""
