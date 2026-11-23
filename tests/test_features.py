@@ -916,6 +916,26 @@ class Chess(unittest.TestCase):
         self.v.type("q\n")
         self.v.wait_shell()
 
+    START = ["8 r n b q k b n r", "7 p p p p p p p p", "6 . . . . . . . .", "5 . . . . . . . .",
+             "4 . . . . . . . .", "3 . . . . . . . .", "2 P P P P P P P P", "1 R N B Q K B N R"]
+
+    @staticmethod
+    def board(s):
+        """The newest eight rank rows on the screen."""
+        return [l for l in s.split("\n") if re.match(r"^[1-8] ", l)][-8:]
+
+    def test_a_move_is_played(self):
+        s = self.play("e2e4", "e7e5")
+        self.assertEqual(self.board(s)[3:5], ["5 . . . . p . . .", "4 . . . . P . . ."])
+        self.quit()
+
+    def test_the_ai_moves_for_both_sides(self):
+        # on move one every piece starts on its own back two ranks, so a move vacates one of them
+        b = self.board(self.play("a", "a"))
+        self.assertNotEqual(b[6:], self.START[6:], "white did not move")
+        self.assertNotEqual(b[:2], self.START[:2], "black did not move")
+        self.quit()
+
     def test_a_blocked_white_pawn_on_its_start_rank_can_capture(self):
         # c2 is blocked by its own knight on c3, and takes the black knight that arrives on d3
         s = self.play("b1c3", "b8c6", "h2h3", "c6b4", "h3h4", "b4d3", "c2d3")
