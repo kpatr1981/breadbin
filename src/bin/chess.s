@@ -113,6 +113,11 @@ loop:
 :
     cmp #'a'
     bne :+
+    lda in_buf+1
+    sec
+    sbc #'1'
+    cmp #8
+    bcc :+              ; a1 .. a8: a move from the a-file, not the AI command
     jmp ai
 :
 

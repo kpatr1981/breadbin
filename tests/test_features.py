@@ -936,6 +936,19 @@ class Chess(unittest.TestCase):
         self.assertNotEqual(b[:2], self.START[:2], "black did not move")
         self.quit()
 
+    def test_a_move_from_the_a_file_is_a_move_not_the_ai(self):
+        b = self.board(self.play("a2a3", "a7a6"))
+        self.assertEqual(b[2], "6 p . . . . . . .")
+        self.assertEqual(b[5], "3 P . . . . . . .")
+        self.assertEqual(b[6], "2 . P P P P P P P")
+        self.assertEqual(b[1], "7 . p p p p p p p")
+        self.quit()
+
+    def test_a_followed_by_text_is_still_the_ai(self):
+        b = self.board(self.play("ai"))
+        self.assertNotEqual(b[6:], self.START[6:], "white did not move")
+        self.quit()
+
     def test_a_blocked_white_pawn_on_its_start_rank_can_capture(self):
         # c2 is blocked by its own knight on c3, and takes the black knight that arrives on d3
         s = self.play("b1c3", "b8c6", "h2h3", "c6b4", "h3h4", "b4d3", "c2d3")
