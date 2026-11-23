@@ -888,6 +888,80 @@ class NonBlockingTTY(unittest.TestCase):
         self.assertEqual(self.v.run("echo ok"), "ok")
 
 
+class Chess(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.v = Vice(copy_image("chess"))
+        cls.v.wait_shell()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.v.close()
+
+    def play(self, *moves):
+        """Start chess and play the moves, White first. Each wait is for the
+        *other* side's prompt after the last one on screen, so an old prompt
+        cannot satisfy it. Returns the screen once the next move is asked for."""
+        self.v.run("echo")          # clears the screen: no prompt of an earlier game is left on it
+        self.v.type("chess\n")
+        s = self.v.wait_for("white (")
+        for i, mv in enumerate(moves):
+            now, nxt = ("white (", "black (") if i % 2 == 0 else ("black (", "white (")
+            self.v.type(mv + "\n")
+            s = self.v.wait_for(nxt, after=now)
+            self.assertNotIn("err:", s.split(now)[-1])
+        return s
+
+    def quit(self):
+        self.v.type("q\n")
+        self.v.wait_shell()
+
+    START = ["8 r n b q k b n r", "7 p p p p p p p p", "6 . . . . . . . .", "5 . . . . . . . .",
+             "4 . . . . . . . .", "3 . . . . . . . .", "2 P P P P P P P P", "1 R N B Q K B N R"]
+
+    @staticmethod
+    def board(s):
+        """The newest eight rank rows on the screen."""
+        return [l for l in s.split("\n") if re.match(r"^[1-8] ", l)][-8:]
+
+    def test_a_move_is_played(self):
+        s = self.play("e2e4", "e7e5")
+        self.assertEqual(self.board(s)[3:5], ["5 . . . . p . . .", "4 . . . . P . . ."])
+        self.quit()
+
+    def test_the_ai_moves_for_both_sides(self):
+        # on move one every piece starts on its own back two ranks, so a move vacates one of them
+        b = self.board(self.play("a", "a"))
+        self.assertNotEqual(b[6:], self.START[6:], "white did not move")
+        self.assertNotEqual(b[:2], self.START[:2], "black did not move")
+        self.quit()
+
+    def test_a_move_from_the_a_file_is_a_move_not_the_ai(self):
+        b = self.board(self.play("a2a3", "a7a6"))
+        self.assertEqual(b[2], "6 p . . . . . . .")
+        self.assertEqual(b[5], "3 P . . . . . . .")
+        self.assertEqual(b[6], "2 . P P P P P P P")
+        self.assertEqual(b[1], "7 . p p p p p p p")
+        self.quit()
+
+    def test_a_followed_by_text_is_still_the_ai(self):
+        b = self.board(self.play("ai"))
+        self.assertNotEqual(b[6:], self.START[6:], "white did not move")
+        self.quit()
+
+    def test_a_blocked_white_pawn_on_its_start_rank_can_capture(self):
+        # c2 is blocked by its own knight on c3, and takes the black knight that arrives on d3
+        s = self.play("b1c3", "b8c6", "h2h3", "c6b4", "h3h4", "b4d3", "c2d3")
+        self.assertIn("3 . . N P . . . .", s)
+        self.quit()
+
+    def test_a_blocked_black_pawn_on_its_start_rank_can_capture(self):
+        # c7 is blocked by its own knight on c6, and takes the white knight that arrives on d6
+        s = self.play("b1c3", "b8c6", "c3b5", "g8f6", "b5d6", "c7d6")
+        self.assertIn("6 . . n p . n . .", s)
+        self.quit()
+
+
 class EchoOptions(unittest.TestCase):
     """echo -n (no newline) and -e (\\n \\e \\b \\a \\xHH \\\\). On the console the
     backslash is the pound key; the test types it as PETSCII $5c."""
